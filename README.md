@@ -1,29 +1,29 @@
 # Doorstep
 
-**Every package, one glance.** A macOS menu bar app that turns the shipping emails in your Gmail
-into a calm, live list of what's arriving, what to return, and what you've spent. Everything is
-read on your Mac; nothing goes to a server but Gmail and (optionally) the carriers themselves.
+Doorstep is a Mac menu bar app for keeping up with orders and deliveries. It reads the order emails
+in your Gmail and shows what's on the way, which returns are coming due, and what you've spent.
+The email is processed on your Mac. If you turn on live tracking, Doorstep also checks the carriers
+you've connected.
 
 <p align="center">
   <img src="docs/images/hero.png" alt="Doorstep: the Arriving list, an order with live carrier scans, and monthly spending" width="900">
 </p>
 
-<sub>Screenshots use the app's built-in sample orders, in light mode. Sections, cards and reminders
-appear only when you have something for them, so your panel will usually be shorter.</sub>
+<sub>These screenshots use sample orders in light mode. Your panel will only show sections that have
+something in them.</sub>
 
-## A quick tour
+## What you'll see
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
 ### Arriving
-Packages grouped by **Today**, **Tomorrow**, **Running late** and **Later**, each with a colored
-status (Shipped, Arriving today, Out for delivery, Delayed, Late, Preparing) and a 4-step progress
-bar. A package that's out for delivery gets its own card with the delivery window and a little
-truck on the last stretch. The **week strip** above shows a dot for each day with deliveries; click
-a day to see just that day. When a return window closes within 3 days, a one-line reminder
-appears at the top (dismiss it with ✕; it stays on the Returns tab).
+See what's due today, tomorrow, or later, and what's running late. Each order shows its current
+status and progress. Deliveries due this week are marked above the list, so you can pick a day to
+see just those packages. When a package is out for delivery, its card shows the delivery window if
+one is available. A return deadline coming up in the next three days also appears here; dismissing
+the reminder doesn't remove it from Returns.
 
 </td>
 <td width="50%" valign="top">
@@ -36,11 +36,10 @@ appears at the top (dismiss it with ✕; it stays on the Returns tab).
 </td>
 <td width="50%" valign="top">
 
-### Every order, in detail
-The current status in plain words ("Today, 10:30 AM – 2:30 PM"), the full timeline, order
-number, total and tracking number with one-click copy. With **live carrier tracking** on, the
-timeline becomes every scan from UPS, USPS, FedEx or DHL, with the city it happened in and a small
-map of the last scan.
+### Order details
+Open an order to see its timeline, order number, total, and tracking number. You can copy the
+tracking number with one click. If you've connected a carrier, the timeline also shows its scans,
+including the city and a map of the latest scan.
 
 </td>
 </tr>
@@ -48,9 +47,10 @@ map of the last scan.
 <td width="50%" valign="top">
 
 ### Returns
-Return deadlines for delivered orders (stated in the email, or the store's usual window, marked
-*est.*), returns in progress (started → sent back → received → refunded), and refunds, including
-the small ones for unavailable grocery items. You get a notification 3 days before a window closes.
+See how long you have to return a delivered order and follow any returns already underway. If the
+email doesn't give a deadline, Doorstep uses the store's usual return window and marks the date
+*est.* Refunds show up here too, including small grocery refunds. Doorstep sends a reminder three
+days before a return window closes.
 
 </td>
 <td width="50%" valign="top">
@@ -64,9 +64,9 @@ the small ones for unavailable grocery items. You get a notification 3 days befo
 <td width="50%" valign="top">
 
 ### Spending
-What you spent each month, by store, from the order totals in your email, plus the change from
-last month and refunds. Stores whose emails carry no price (a carrier's shipping notice only) are
-named, so a low month never looks mysterious.
+See monthly order totals by store, how the total compares with last month, and any refunds.
+Doorstep can only count purchases when an email includes a price. Stores missing from the total
+are listed below the chart.
 
 </td>
 </tr>
@@ -78,18 +78,19 @@ named, so a low month never looks mysterious.
   <img src="docs/images/menu-bar.png" alt="Menu bar states: nothing coming, 7 on the way, due today with a delay warning, a delivery window, just delivered" width="760">
 </p>
 
-The box hops when a package goes out for delivery and wiggles when one is delivered.
-"Delivery window" needs live tracking; "Just delivered" shows for an hour.
+The menu bar icon shows how many packages are on the way and calls out deliveries due today. It
+animates when a package goes out for delivery or arrives. Delivery windows require live tracking;
+the "Just delivered" state stays for an hour.
 
-### Also
+### A few more things
 
-- **Signature required** badge when someone needs to be home.
-- **Product photos** from the email; otherwise a category icon, the store's logo or the carrier's.
-- **Paste to track:** copy any UPS/USPS/FedEx/DHL number, open the panel on Arriving or Returns, press ⌘V.
-- **Right-click any order:** copy tracking number, track, open the email, mark as received, hide.
-- **Searchable history** of everything delivered in the last 60 days.
-- **Notifications** only when it matters: out for delivery, delivered, delayed, return window closing.
-- Liquid Glass controls, light and dark mode, and Reduce Motion respected.
+- A **Signature required** badge tells you when someone needs to be home.
+- Product photos appear when they're in the email. Otherwise, Doorstep uses a category icon or a logo.
+- Copy a UPS, USPS, FedEx, or DHL tracking number and press ⌘V on the Arriving or Returns tab to look it up.
+- Right-click an order to copy its tracking number, open its email, mark it received, or hide it.
+- Search deliveries from the last 60 days.
+- Get notifications when an order goes out for delivery, arrives, or is delayed, and when a return deadline is near.
+- Light and dark mode, Liquid Glass controls, and Reduce Motion support.
 
 | Shortcut | Action |
 | --- | --- |
