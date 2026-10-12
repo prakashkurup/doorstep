@@ -41,6 +41,11 @@ private func date(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10) -> Date {
         #expect(Heuristics.status(subject: "Your Amazon.com order", head: body) == .ordered)
     }
 
+    @Test func confirmationPhrases() {
+        #expect(Heuristics.status(subject: "Thanks for shopping with us!", head: "") == .ordered)
+        #expect(Heuristics.status(subject: "Order #1975888 confirmed", head: "") == .ordered)
+    }
+
     @Test func delivered() {
         #expect(Heuristics.status(subject: "Delivered: \"Kindle Paperwhite Case\"", head: "") == .delivered)
     }
@@ -75,7 +80,8 @@ private func date(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10) -> Date {
 
     @Test func nonOrderMailIsExcluded() {
         #expect(Heuristics.isExcluded(subject: "Your Daily Digest for Wed, 9/30 is ready to view", fromAddress: "USPSInformeddelivery@email.informeddelivery.usps.com"))
-        #expect(Heuristics.isExcluded(subject: "You're getting a $5.49 refund: [Great Value Paper Plates]", fromAddress: "help@walmart.com"))
+        // Refunds aren't excluded any more; they become entries in the Returns section.
+        #expect(!Heuristics.isExcluded(subject: "You're getting a $5.49 refund: [Great Value Paper Plates]", fromAddress: "help@walmart.com"))
         #expect(!Heuristics.isExcluded(subject: "Shipped 1 item: Supplements", fromAddress: "shipment-tracking@amazon.com"))
     }
 
@@ -98,6 +104,21 @@ private func date(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10) -> Date {
         #expect(Heuristics.tidyMerchant("USPS Tracking") == "USPS")
         #expect(Heuristics.tidyMerchant("Walmart.com") == "Walmart")
         #expect(Heuristics.tidyMerchant("MACYS") == "Macys")
+    }
+
+    @Test func totals() {
+        #expect(Heuristics.total(in: "Order #   111-1234567-7654321\nTotal         $20.74") == "$20.74")
+        #expect(Heuristics.total(in: "Order total\nIncludes all fees, taxes and discounts      $39.45\nYou saved a total of        $9.95") == "$39.45")
+        #expect(Heuristics.total(in: "You saved a total of $9.95") == nil)
+        #expect(Heuristics.total(in: "Subtotal $30.00\nGrand Total: $32.85") == "$32.85")
+        // Columbia: labels in one column, amounts in the next; the charge is stated separately.
+        let columbia = "Item Subtotal:  $70.00\nSubtotal:\nShipping:\nTax:\nOrder Total:\n$137.85\n$0.00\n$14.34\n$152.19\nPayment\nVisa ending 1234\nAmount $152.19"
+        #expect(Heuristics.total(in: columbia) == "$152.19")
+        // Igloo: "Total" alone on a line in the confirmation; per-item "Total:" lines in the shipping email.
+        #expect(Heuristics.total(in: "Subtotal\n$87.53\nShipping\n$9.99\nTax\n$10.15\nTotal\n$107.67") == "$107.67")
+        #expect(Heuristics.total(in: "Cooler\nTotal: $ 39.99\nJug\nTotal: $ 22.99\nCooler\nTotal: $ 39.99") == nil)
+        // Walmart: the temporary hold isn't the total.
+        #expect(Heuristics.total(in: "Order total\nIncludes all fees, taxes and discounts      $64.25\nYou saved a total of        $10.37\n$69.47\nTemporary hold: $69.47") == "$64.25")
     }
 
     @Test func merchantFromSender() {

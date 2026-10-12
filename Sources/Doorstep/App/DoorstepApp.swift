@@ -12,6 +12,12 @@ struct DoorstepApp: App {
             Snapshot.run(store: store)
             exit(0)
         }
+        if let query = Snapshot.searchQuery {
+            Task { @MainActor in
+                await Snapshot.search(query, auth: store.auth)
+                exit(0)
+            }
+        }
         if let id = Snapshot.dumpMessageID {
             Task { @MainActor in
                 await Snapshot.dump(id: id, auth: store.auth)
@@ -36,7 +42,7 @@ struct PopoverView: View {
     @State private var route: Route = .list
 
     enum Route: Equatable {
-        case list, detail(String), settings
+        case list, detail(String), returnDetail(String), settings, spending
     }
 
     var body: some View {
@@ -46,7 +52,10 @@ struct PopoverView: View {
             } else {
                 switch route {
                 case .list:
-                    OrderListView(open: { order in go(.detail(order.id)) }, openSettings: { go(.settings) })
+                    OrderListView(open: { order in go(.detail(order.id)) },
+                                  openReturn: { item in go(.returnDetail(item.id)) },
+                                  openSettings: { go(.settings) },
+                                  openSpending: { go(.spending) })
                         .transition(.move(edge: .leading).combined(with: .opacity))
                 case .detail(let id):
                     if let order = store.order(id: id) {
@@ -55,8 +64,18 @@ struct PopoverView: View {
                     } else {
                         Color.clear.onAppear { route = .list }
                     }
+                case .returnDetail(let id):
+                    if let item = store.returnCase(id: id) {
+                        ReturnDetailView(item: item, back: { go(.list) })
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    } else {
+                        Color.clear.onAppear { route = .list }
+                    }
                 case .settings:
                     SettingsView(back: { go(.list) })
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                case .spending:
+                    SpendingView(back: { go(.list) })
                         .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }

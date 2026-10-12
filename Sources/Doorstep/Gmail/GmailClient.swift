@@ -18,9 +18,9 @@ struct GmailClient {
     /// Shipping and order emails from the last few weeks. Promotions are excluded so
     /// "20% off your next order" mail never becomes a package.
     static let searchQuery = """
-    newer_than:21d -category:promotions -category:social -from:informeddelivery.usps.com \
+    newer_than:60d -category:promotions -category:social -from:informeddelivery.usps.com \
     (category:purchases OR subject:(order OR ordered OR shipped OR "out for delivery" OR delivered OR \
-    arriving OR shipment OR tracking OR package OR delivery OR delayed))
+    arriving OR shipment OR tracking OR package OR delivery OR delayed OR return OR refund))
     """
 
     func profileEmail() async throws -> String {
@@ -29,7 +29,7 @@ struct GmailClient {
         return try JSONDecoder().decode(Profile.self, from: data).emailAddress
     }
 
-    func listMessageIDs(query: String = searchQuery, limit: Int = 150) async throws -> [String] {
+    func listMessageIDs(query: String = searchQuery, limit: Int = 400) async throws -> [String] {
         struct Page: Decodable {
             struct Ref: Decodable { let id: String }
             let messages: [Ref]?

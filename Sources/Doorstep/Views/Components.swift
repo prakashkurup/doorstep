@@ -62,8 +62,7 @@ struct ProgressDots: View {
     let stage: Int
     let color: Color
     var showLabels = false
-
-    private let labels = ["Ordered", "Shipped", "Out for delivery", "Delivered"]
+    var labels = ["Ordered", "Shipped", "Out for delivery", "Delivered"]
 
     var body: some View {
         HStack(spacing: 0) {
@@ -90,6 +89,23 @@ struct ProgressDots: View {
         }
         .accessibilityElement()
         .accessibilityLabel("Progress: \(labels[min(max(stage, 0), 3)])")
+    }
+}
+
+/// Someone has to be home to sign.
+struct SignatureBadge: View {
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "signature").font(.system(size: 9.5, weight: .bold))
+            Text("Signature").font(.system(size: 10.5, weight: .semibold))
+        }
+        .foregroundStyle(.primary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.gray.opacity(0.2), in: Capsule())
+        .fixedSize()
+        .help("Signature required: someone needs to be home")
+        .accessibilityLabel("Signature required")
     }
 }
 
@@ -130,12 +146,13 @@ struct PulsingDot: View {
 
 struct SectionHeader: View {
     let title: String
+    var color: Color = .secondary
 
     var body: some View {
         Text(title.uppercased())
             .font(.system(size: 11, weight: .semibold))
             .kerning(0.5)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(color)
             .padding(.horizontal, 8)
             .accessibilityAddTraits(.isHeader)
     }

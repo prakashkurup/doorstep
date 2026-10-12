@@ -21,6 +21,12 @@ struct EmailFinding: Codable, Hashable {
     var itemsAreCategories: Bool?
     /// The store's website when the store itself sent the email (not a carrier).
     var senderDomain: String?
+    var signatureRequired: Bool?
+    var returnBy: Date?
+    var isGrocery: Bool?
+    /// Set when this email is about a return or refund rather than a delivery.
+    var returnStatus: ReturnStatus?
+    var refundAmount: String?
 }
 
 /// Partial result from one extraction source; later sources only fill gaps.

@@ -19,6 +19,26 @@ enum Snapshot {
         return args[i + 1]
     }()
 
+    /// `Doorstep --search "<gmail query>"` lists matching emails (id, sender, subject).
+    static let searchQuery: String? = {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--search"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }()
+
+    @MainActor
+    static func search(_ query: String, auth: GoogleAuth) async {
+        do {
+            let client = GmailClient(token: try await auth.validAccessToken())
+            for id in try await client.listMessageIDs(query: query, limit: 25) {
+                let m = try await client.message(id: id)
+                print("\(id) | \(m.fromName) <\(m.fromAddress)> | \(m.subject)")
+            }
+        } catch {
+            print("search failed: \(error)")
+        }
+    }
+
     @MainActor
     static func dump(id: String, auth: GoogleAuth) async {
         do {
@@ -44,8 +64,14 @@ enum Snapshot {
         try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         store.deliveredExpanded = true
 
+        let list = AnyView(OrderListView(open: { _ in }, openReturn: { _ in }, openSettings: {}, openSpending: {}))
         let scenes: [(String, AnyView)] = [
-            ("list", AnyView(OrderListView(open: { _ in }, openSettings: {}))),
+            ("list", list),
+            ("list-returns", list),
+            ("list-delivered", list),
+            ("spending", AnyView(SpendingView(back: {}))),
+            ("return-detail", AnyView(ReturnDetailView(item: store.returns[0], back: {}))),
+            ("detail-signature", AnyView(OrderDetailView(order: store.order(id: "cable")!, back: {}))),
             ("detail-today", AnyView(OrderDetailView(order: store.order(id: "aero")!, back: {}))),
             ("detail-delayed", AnyView(OrderDetailView(order: store.order(id: "drip")!, back: {}))),
             ("detail-multi", AnyView(OrderDetailView(order: store.order(id: "supp")!, back: {}))),
@@ -57,6 +83,7 @@ enum Snapshot {
             let appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)!
             appearance.performAsCurrentDrawingAppearance {
                 for (name, view) in scenes {
+                    store.listTab = name == "list-returns" ? .returns : name == "list-delivered" ? .delivered : .arriving
                     let content = view
                         .environment(store)
                         .frame(width: 372)

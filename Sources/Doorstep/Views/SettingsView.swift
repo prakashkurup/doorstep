@@ -24,6 +24,7 @@ struct SettingsView: View {
             .padding(.leading, 8)
             .padding(.top, 10)
 
+            FittedScroll(maxHeight: 640) {
             VStack(alignment: .leading, spacing: 18) {
                 Text("Settings")
                     .font(.system(size: 15, weight: .semibold))
@@ -52,6 +53,8 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                LiveTrackingSettings()
 
                 group {
                     row("Notifications") {
@@ -82,6 +85,7 @@ struct SettingsView: View {
             .padding(.horizontal, 18)
             .padding(.top, 8)
             .padding(.bottom, 18)
+            }
         }
     }
 

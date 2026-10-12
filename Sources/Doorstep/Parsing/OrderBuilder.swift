@@ -3,7 +3,8 @@ import Foundation
 /// Groups per-email findings into orders. Emails about the same order share an
 /// order number, a tracking number, or a Gmail thread.
 enum OrderBuilder {
-    static func build(now: Date = Date(), from findings: [EmailFinding]) -> [Order] {
+    static func build(now: Date = Date(), from allFindings: [EmailFinding]) -> [Order] {
+        let findings = allFindings.filter { $0.returnStatus == nil }
         // Union-find over findings keyed by any shared identifier.
         var parent = Array(findings.indices)
         func find(_ i: Int) -> Int {
@@ -137,11 +138,67 @@ enum OrderBuilder {
             imageURL: sorted.reversed().compactMap(\.imageURL).first,
             itemsAreCategories: sorted.reversed().first { !$0.items.isEmpty }?.itemsAreCategories,
             merchantDomain: mostCommon(sorted.compactMap(\.senderDomain)) ?? Heuristics.guessDomain(forMerchant: merchant),
+            signatureRequired: sorted.contains { $0.signatureRequired == true } ? true : nil,
+            returnBy: returnDeadline(sorted, status: status, deliveredAt: deliveredAt, merchant: merchant).date,
+            returnByEstimated: returnDeadline(sorted, status: status, deliveredAt: deliveredAt, merchant: merchant).estimated ? true : nil,
+            isGrocery: sorted.contains { $0.isGrocery == true } ? true : nil,
             events: events,
             latestMessageId: latest.messageId,
             latestThreadId: latest.threadId,
             lastUpdated: latest.date
         )
+    }
+
+    /// A stated deadline wins; otherwise the store's usual window from delivery, marked as an estimate.
+    private static func returnDeadline(_ sorted: [EmailFinding], status: OrderStatus, deliveredAt: Date?, merchant: String) -> (date: Date?, estimated: Bool) {
+        if let stated = sorted.reversed().compactMap(\.returnBy).first { return (stated, false) }
+        guard status == .delivered, let deliveredAt, !sorted.contains(where: { $0.isGrocery == true }),
+              let days = ReturnPolicy.defaultDays(for: merchant) else { return (nil, false) }
+        let date = Calendar.current.date(byAdding: .day, value: days, to: Calendar.current.startOfDay(for: deliveredAt))
+        return (date, true)
+    }
+
+    // MARK: Returns
+
+    static func buildReturns(from allFindings: [EmailFinding], orders: [Order]) -> [ReturnCase] {
+        let findings = allFindings.filter { $0.returnStatus != nil }
+        var groups: [String: [EmailFinding]] = [:]
+        for f in findings {
+            let key = f.orderNumber.map { "o:" + normalize($0) + (f.items.first.map { "#" + $0.name.lowercased() } ?? "") } ?? "th:" + f.threadId
+            groups[key, default: []].append(f)
+        }
+        let shoppedAt = Set(orders.map { Heuristics.tidyMerchant($0.merchant).lowercased() })
+        return groups.compactMap { key, group -> ReturnCase? in
+            let sorted = group.sorted { $0.date < $1.date }
+            guard let latest = sorted.last else { return nil }
+            let status = sorted.compactMap(\.returnStatus).max { $0.stage < $1.stage } ?? .started
+            let original = sorted.compactMap(\.orderNumber).first.flatMap { number in
+                orders.first { $0.orderNumber.map(normalize) == normalize(number) }
+            }
+            var events: [ReturnEvent] = []
+            for f in sorted {
+                guard let s = f.returnStatus, !events.contains(where: { $0.status == s }) else { continue }
+                events.append(ReturnEvent(messageId: f.messageId, status: s, date: f.date))
+            }
+            let merchant = mostCommon(sorted.map(\.merchant)) ?? latest.merchant
+            // A refund from a store with no shipped orders (movie tickets, rides) isn't a return.
+            if original == nil, !shoppedAt.contains(Heuristics.tidyMerchant(merchant).lowercased()) { return nil }
+            let title = sorted.compactMap { $0.items.first?.name }.first { !$0.isEmpty } ?? original?.title ?? "Return to \(merchant)"
+            return ReturnCase(
+                id: "r:" + key,
+                merchant: merchant,
+                title: title,
+                status: status,
+                refundAmount: sorted.reversed().compactMap(\.refundAmount).first,
+                orderNumber: sorted.compactMap(\.orderNumber).first,
+                events: events,
+                lastUpdated: latest.date,
+                imageURL: sorted.compactMap(\.imageURL).first ?? original?.imageURL,
+                merchantDomain: mostCommon(sorted.compactMap(\.senderDomain)) ?? Heuristics.guessDomain(forMerchant: merchant),
+                latestThreadId: latest.threadId,
+                isRefundOnly: status == .refunded && events.count == 1
+            )
+        }
     }
 
     private static func mostCommon(_ values: [String]) -> String? {

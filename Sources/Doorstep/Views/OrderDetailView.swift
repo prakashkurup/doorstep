@@ -83,14 +83,32 @@ struct OrderDetailView: View {
     private var statusCard: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Label(order.status.label, systemImage: Palette.symbol(for: order.status))
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(color)
+                HStack {
+                    Label(order.live?.isReadyForPickup == true ? "Ready for pickup" : order.status.label,
+                          systemImage: Palette.symbol(for: order.status))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(color)
+                    Spacer()
+                    if let live = order.live {
+                        HStack(spacing: 5) {
+                            Circle().fill(Palette.green).frame(width: 6, height: 6)
+                            Text("Live · \(live.carrierName ?? order.carrier.displayName) · \(live.lastChecked.formatted(.relative(presentation: .named, unitsStyle: .abbreviated)))")
+                        }
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .help("Status straight from the carrier, via 17TRACK")
+                    }
+                }
                 Text(etaText)
                     .font(.system(size: 24, weight: .semibold))
                     .kerning(-0.5)
                 if order.deliveryInferred == true, let at = order.deliveredAt {
                     Text("No delivery email. It was due \(DateText.weekdayDay(at)).")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                if let scan = order.live?.events.first, order.status != .delivered {
+                    Text("Last scan \(scan.date.formatted(date: .omitted, time: .shortened))\(scan.location.map { " in \($0)" } ?? "")")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -101,6 +119,14 @@ struct OrderDetailView: View {
                 }
             }
             ProgressDots(stage: order.stage, color: color, showLabels: true)
+            if order.signatureRequired == true, order.status != .delivered {
+                Label("Signature required. Someone needs to be home to sign.", systemImage: "signature")
+                    .font(.system(size: 12, weight: .medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.gray.opacity(0.16), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
         }
         .padding(.horizontal, 14)
         .padding(.top, 16)
@@ -118,6 +144,7 @@ struct OrderDetailView: View {
             return "Delivered \(day), \(at.formatted(date: .omitted, time: .shortened))"
         }
         if order.status == .outForDelivery {
+            if let window = order.deliveryWindow { return "Today, \(window)" }
             return order.expectedByTime.map { "Today, \($0)" } ?? "Today"
         }
         guard let eta = order.expectedDelivery else { return "Arrival date not known yet" }
@@ -127,10 +154,28 @@ struct OrderDetailView: View {
         return order.status == .ordered ? "Est. \(day)" : day
     }
 
+    private struct TimelineEntry: Identifiable {
+        let id: String
+        let title: String
+        let detail: String
+    }
+
+    private var timeline: [TimelineEntry] {
+        if let live = order.live, !live.events.isEmpty {
+            return live.events.enumerated().map { i, e in
+                TimelineEntry(id: "live-\(i)", title: e.description,
+                              detail: DateText.eventTime(e.date) + (e.location.map { " · \($0)" } ?? ""))
+            }
+        }
+        return order.events.sorted { $0.date > $1.date }.map {
+            TimelineEntry(id: $0.id, title: $0.status.eventLabel, detail: DateText.eventTime($0.date))
+        }
+    }
+
     private var updates: some View {
         VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: "Updates").padding(.horizontal, -8)
-            let events = order.events.sorted { $0.date > $1.date }
+            SectionHeader(title: order.live?.events.isEmpty == false ? "Carrier scans" : "Updates").padding(.horizontal, -8)
+            let events = timeline
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
                     HStack(alignment: .top, spacing: 12) {
@@ -146,9 +191,9 @@ struct OrderDetailView: View {
                         .padding(.top, 5)
                         .frame(width: 10)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(event.status.eventLabel)
+                            Text(event.title)
                                 .font(.system(size: 13, weight: index == 0 ? .semibold : .regular))
-                            Text(DateText.eventTime(event.date))
+                            Text(event.detail)
                                 .font(.system(size: 11.5))
                                 .foregroundStyle(.secondary)
                         }
@@ -180,6 +225,7 @@ struct OrderDetailView: View {
             ("Carrier", order.carrierName),
             ("Ordered", order.orderedAt.map(DateText.weekdayDay)),
             ("Total", order.total),
+            ("Return by", returnByText),
         ].compactMap { label, value in value.map { (label, $0) } }
 
         return VStack(spacing: 0) {
@@ -211,6 +257,13 @@ struct OrderDetailView: View {
         }
         .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.cardBorder, lineWidth: 0.5))
+    }
+
+    private var returnByText: String? {
+        if let returned = store.returnCase(for: order) { return returned.status.label }
+        guard let date = order.returnBy else { return nil }
+        let text = date.formatted(.dateTime.weekday(.abbreviated).month(.abbreviated).day())
+        return order.returnByEstimated == true ? "\(text) (est.)" : text
     }
 
     private func detailRow<V: View>(_ label: String, divider: Bool, trailing: CGFloat = 14, @ViewBuilder value: () -> V) -> some View {

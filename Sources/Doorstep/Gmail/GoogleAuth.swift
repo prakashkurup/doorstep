@@ -35,7 +35,8 @@ final class GoogleAuth {
     var hasClientFile: Bool { OAuthClient.load() != nil }
 
     init() {
-        isSignedIn = Keychain.get(Self.refreshKey) != nil
+        // Snapshot mode renders sample data and must never trigger a Keychain prompt.
+        isSignedIn = Snapshot.isActive ? false : Keychain.get(Self.refreshKey) != nil
     }
 
     func signIn() async throws {

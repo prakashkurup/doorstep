@@ -68,6 +68,15 @@ struct Order: Codable, Identifiable, Hashable {
     var imageURL: String?
     var itemsAreCategories: Bool?
     var merchantDomain: String?
+    var signatureRequired: Bool?
+    /// Last day to return; stated in an email, or estimated from the store's usual window.
+    var returnBy: Date?
+    var returnByEstimated: Bool?
+    /// Grocery and same-day deliveries: no return window, no live tracking.
+    var isGrocery: Bool?
+    var live: LiveTracking?
+    /// "10:30 AM – 2:30 PM" when the carrier gives a same-day window.
+    var deliveryWindow: String?
     var events: [OrderEvent]
     var latestMessageId: String
     var latestThreadId: String

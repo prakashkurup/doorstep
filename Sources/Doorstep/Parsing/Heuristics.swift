@@ -22,14 +22,81 @@ enum Heuristics {
     // MARK: Exclusions
 
     /// Mail that talks about deliveries but is never an order: USPS Informed Delivery
-    /// digests (letters), refunds and returns.
+    /// digests (letters in the mailbox).
     static func isExcluded(subject: String, fromAddress: String) -> Bool {
         let s = subject.lowercased()
         let from = fromAddress.lowercased()
-        if from.contains("informeddelivery") || s.contains("daily digest") { return true }
-        if s.range(of: "\\brefund|\\breturn(ed)?\\b|return label|drop-?off code", options: .regularExpression) != nil { return true }
-        return false
+        return from.contains("informeddelivery") || s.contains("daily digest")
     }
+
+    // MARK: Returns and refunds
+
+    /// Returns emails are recognized from the subject (and the first lines), strongest state first.
+    static func returnStatus(subject: String, head: String) -> ReturnStatus? {
+        let s = subject.lowercased()
+        let h = String(head.lowercased().prefix(500))
+        func has(_ p: String, _ t: String) -> Bool { t.range(of: p, options: .regularExpression) != nil }
+        // Delivery emails often say "Need to return? Print a return label", so the body only
+        // counts when the subject is about a return or refund.
+        let texts = has("return|refund", s) ? [s, h] : [s]
+        for text in texts {
+            if has("refund (has been |was )?(issued|processed|completed|initiated|is on its way)|you('re| are) getting a \\$[\\d.,]+ refund|your refund|refunded|refund of \\$", text) { return .refunded }
+            if has("(we('ve| have) )?received your return|return (has been |was )?received|return (is )?complete", text) { return .received }
+            if has("return (was |has been )?(dropped off|shipped|in transit|scanned|on its way)|we('ll| will) let you know when (we|your return)", text) { return .shipped }
+            if has("return (is |has been |was )?(request(ed)?|started|initiated|authorization|label|confirmation|ready|created)|drop-?off code|your return (of|for)|return(ing)? your item", text) { return .started }
+        }
+        return nil
+    }
+
+    static func refundAmount(in text: String) -> String? {
+        let patterns = [
+            "(?i)refund(?:ed)?(?: amount)?(?: of)?\\s*:?\\s*(\\$\\s?[\\d,]+\\.\\d{2})",
+            "(?i)(\\$\\s?[\\d,]+\\.\\d{2})\\s+refund",
+        ]
+        for p in patterns {
+            guard let re = try? NSRegularExpression(pattern: p) else { continue }
+            let ns = text as NSString
+            if let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) {
+                return ns.substring(with: m.range(at: 1)).replacingOccurrences(of: " ", with: "")
+            }
+        }
+        return nil
+    }
+
+    /// `You're getting a $5.49 refund: [Great Value Paper Plates]` → "Great Value Paper Plates"
+    static func bracketedItem(_ subject: String) -> String? {
+        guard let open = subject.firstIndex(of: "["), let close = subject[open...].firstIndex(of: "]") else { return nil }
+        let name = subject[subject.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+        return name.isEmpty ? nil : name
+    }
+
+    // MARK: Delivery details
+
+    static func signatureRequired(in text: String) -> Bool {
+        let t = text.lowercased()
+        guard t.range(of: "(adult |direct |indirect )?signature (is )?required|requires? (a|an adult) signature|must (be )?sign(ed)? for", options: .regularExpression) != nil else { return false }
+        return t.range(of: "no signature (is )?required|signature not required", options: .regularExpression) == nil
+    }
+
+    /// "Return by Nov 9", "eligible for return through November 10, 2026", "returnable until …".
+    static func returnDeadline(in text: String, emailDate: Date) -> Date? {
+        let lower = text.lowercased()
+        guard let kw = lower.range(of: "return(s)? (by|until|before)|returnable (until|through|by)|eligible for (a )?return(s)? (until|through|by)|return window (closes|ends)( on)?|eligible through", options: .regularExpression) else { return nil }
+        let window = String(text[kw.upperBound...].prefix(40))
+        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.date.rawValue),
+              let match = detector.firstMatch(in: window, range: NSRange(location: 0, length: (window as NSString).length)),
+              let date = match.date else { return nil }
+        // A return deadline is after the email and within a year.
+        guard date > emailDate, date < emailDate.addingTimeInterval(400 * 86_400) else { return nil }
+        return Calendar.current.startOfDay(for: date)
+    }
+
+    static func isGroceryDelivery(subject: String) -> Bool {
+        subject.range(of: "delivery order|your delivery should arrive|grocery|curbside|pickup order|order is ready for pickup",
+                      options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    // MARK: Status
 
     // MARK: Status
 
@@ -48,7 +115,7 @@ enum Heuristics {
             if has("\\bdelivered\\b", text) && !has("(will|to) be delivered|get(s)? delivered|delivered by|be delivered", text) { return .delivered }
             if has("(has|have|was|were) arrived|was left (at|in|by)|dropped off|left at your", text) { return .delivered }
             if has("shipped|on (its|the) way|in transit|has been dispatched|dispatched|shipment|out of the warehouse", text) { return .shipped }
-            if has("order (confirmation|confirmed|received|placed)|thanks for your order|thank you for your (order|purchase)|^ordered\\b|we('ve| have) received your order", text) { return .ordered }
+            if has("order (confirmation|confirmed|received|placed)|order #?[a-z0-9-]{4,} (is )?confirmed|thanks for (your order|shopping)|thank you for (your (order|purchase)|shopping)|^ordered\\b|we('ve| have) received your order", text) { return .ordered }
             // Confirmations also say "Arriving Monday", so this is the weakest signal.
             if has("\\barriving\\b", text) { return .shipped }
         }
@@ -215,11 +282,43 @@ enum Heuristics {
         return (nil, byTime)
     }
 
-    static func total(in text: String) -> String? {
-        guard let re = try? NSRegularExpression(pattern: "(?i)(?:order total|grand total|total charged|total)\\s*[:]?\\s*(\\$\\s?[\\d,]+\\.\\d{2})") else { return nil }
+    /// The amount charged. Stores lay this out differently, so try in order:
+    /// 1. a total label with the amount on the same line — "Total $20.74" (Amazon);
+    /// 2. an explicit charge — "Amount $152.19" (Columbia, whose labels and amounts sit in
+    ///    separate columns, so "Order Total:" is followed by the subtotal);
+    /// 3. a total label with the amount a line or two below — "Order total / Includes all
+    ///    fees, taxes and discounts $39.45" (Walmart).
+    /// Savings and subtotals never count.
+    private static func matches(_ pattern: String, in text: String) -> [String] {
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return [] }
         let ns = text as NSString
-        guard let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else { return nil }
-        return ns.substring(with: m.range(at: 1)).replacingOccurrences(of: " ", with: "")
+        return re.matches(in: text, range: NSRange(location: 0, length: ns.length)).map {
+            ns.substring(with: $0.range(at: 1)).replacingOccurrences(of: " ", with: "")
+        }
+    }
+
+    static func total(in text: String) -> String? {
+        let amount = "(\\$\\s?[\\d,]+\\.\\d{2})"
+        let strong = "(?:order total|grand total|total charged|amount charged|total paid|payment total|order amount|estimated total|total amount)"
+        let weakTotal = "(?i)(?<!sub)(?<!item )(?<!saved a )(?<!saved )\\btotal\\b[ \\t]*:?[ \\t]*" + amount
+        // "Total: $39.99" repeated with different amounts is a per-item column, not the order total.
+        let weakValues = Set(matches(weakTotal, in: text))
+        var patterns = ["(?i)\\b" + strong + "\\b[^$\\n]{0,40}?" + amount]
+        if weakValues.count <= 1 { patterns.append(weakTotal) }
+        patterns += [
+            "(?i)(?:^|\\n)\\s*(?:amount(?: charged| paid)?|you paid|charged to [^$\\n]{0,30})\\s*:?\\s*" + amount,
+            "(?i)\\b" + strong + "\\b[^$\\n]{0,70}\\n[^$\\n]{0,70}?" + amount,
+            // "Total" alone on its line, amount on the next (Igloo).
+            "(?i)(?:^|\\n)[ \\t]*total[ \\t]*:?[ \\t]*\\n[ \\t]*" + amount,
+        ]
+        for p in patterns {
+            guard let re = try? NSRegularExpression(pattern: p) else { continue }
+            let ns = text as NSString
+            if let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) {
+                return ns.substring(with: m.range(at: 1)).replacingOccurrences(of: " ", with: "")
+            }
+        }
+        return nil
     }
 
     // MARK: Merchant
