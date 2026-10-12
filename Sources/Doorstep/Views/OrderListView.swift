@@ -273,6 +273,9 @@ private struct ArrivingTab: View {
     let goToReturns: () -> Void
 
     var body: some View {
+        if store.showStaySignedInTip {
+            StaySignedInTip()
+        }
         if let urgent = store.urgentReturnWindows.first {
             ReturnNudge(order: urgent, others: store.urgentReturnWindows.count - 1, action: goToReturns) {
                 withAnimation(.snappy(duration: 0.2)) { store.dismissNudge(for: urgent) }
@@ -331,6 +334,45 @@ private struct ArrivingTab: View {
                 }
             }
         }
+    }
+}
+
+/// Shown once after connecting: Google signs out Testing-mode apps every 7 days.
+private struct StaySignedInTip: View {
+    @Environment(OrderStore.self) private var store
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "person.badge.key.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Palette.blue)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Stay signed in").font(.system(size: 12.5, weight: .semibold))
+                Text("While your Google app is in Testing, Google signs you out every 7 days. Publishing it stops that. Fill in Branding (no logo), then Publish app.")
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button("Open Branding") { NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/auth/branding")!) }
+                    Button("Open Audience") { NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/auth/audience")!) }
+                }
+                .buttonStyle(.glass)
+                .controlSize(.small)
+            }
+            Spacer(minLength: 0)
+            Button {
+                withAnimation(.snappy) { store.showStaySignedInTip = false }
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+            }
+            .buttonStyle(HoverButtonStyle(cornerRadius: 6))
+            .accessibilityLabel("Dismiss tip")
+        }
+        .padding(12)
+        .glassEffect(.regular.tint(Palette.blue.opacity(0.12)), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 }
 

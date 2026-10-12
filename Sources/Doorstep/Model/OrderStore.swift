@@ -61,6 +61,11 @@ final class OrderStore {
     }
     private(set) var menuBarPulse: MenuBarPulse?
 
+    /// One-time tip after connecting: Testing-mode apps get signed out weekly.
+    var showStaySignedInTip = false {
+        didSet { if !showStaySignedInTip { UserDefaults.standard.set(true, forKey: "seenStaySignedInTip") } }
+    }
+
     /// Tracking numbers pasted into the panel, with no email behind them.
     private(set) var manualOrders: [Order] = []
     /// Orders the user marked as received themselves.
@@ -364,6 +369,7 @@ final class OrderStore {
             try await auth.signIn()
             isSampleMode = false
             lastError = nil
+            if !UserDefaults.standard.bool(forKey: "seenStaySignedInTip") { showStaySignedInTip = true }
             Notifier.shared.requestPermission()
             await refresh()
         } catch {
@@ -489,7 +495,7 @@ final class OrderStore {
             let logosAdded = await LogoStore.prefetch(domains)
             if photosAdded || logosAdded { imagesVersion += 1 }
         } catch AuthError.notSignedIn {
-            lastError = "Gmail disconnected. Connect again in Settings."
+            lastError = auth.signedOutByGoogle ? nil : "Gmail disconnected. Connect again in Settings."
         } catch {
             lastError = error.localizedDescription
         }

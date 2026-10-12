@@ -41,6 +41,12 @@ struct SettingsView: View {
                     divider
                     if store.isConnected {
                         row("") {
+                            Button("Stay signed in…") {
+                                NSWorkspace.shared.open(URL(string: "https://console.cloud.google.com/auth/audience")!)
+                            }
+                            .buttonStyle(.link)
+                            .help("Publish your Google app so Google stops signing you out every 7 days")
+                            Spacer()
                             Button("Disconnect") { store.signOut() }
                                 .buttonStyle(.link)
                                 .foregroundStyle(Palette.red)

@@ -75,18 +75,11 @@ named, so a low month never looks mysterious.
 ### In the menu bar
 
 <p align="center">
-  <img src="docs/images/menu-bar.png" alt="Menu bar states: idle, packages in transit, arriving today with a delay warning" width="660">
+  <img src="docs/images/menu-bar.png" alt="Menu bar states: nothing coming, 7 on the way, due today with a delay warning, a delivery window, just delivered" width="760">
 </p>
 
-| State | When |
-| --- | --- |
-| Box only | Nothing on the way |
-| Box + **7** | Packages in transit |
-| Box + **1 today** | Packages due today (⚠︎ added when something is delayed) |
-| Box + **10:30–2:30** | One package today with a carrier delivery window (needs live tracking) |
-| Box + **Delivered** | For an hour after a package is delivered |
-
 The box hops when a package goes out for delivery and wiggles when one is delivered.
+"Delivery window" needs live tracking; "Just delivered" shows for an hour.
 
 ### Also
 
@@ -145,30 +138,88 @@ Without Gmail connected, choose **Preview with sample orders** to try the UI.
 "Doorstep Local Signing" identity in your login keychain; `build-app.sh` uses it automatically so
 every build keeps the same signature. Click **Always Allow** once after switching.
 
-## Connect Gmail (one-time, ~5 minutes)
+## Connect Gmail (one-time, about 5 minutes)
 
-Doorstep needs its own Google OAuth client. It's free and only you will use it.
+Google only lets an app read Gmail through a sign-in you create in your own Google account. It's
+free, nobody else uses it, and you do it once. Doorstep walks you through it:
 
-1. Open <https://console.cloud.google.com/projectcreate> and create a project (e.g. "Doorstep").
-2. Enable the Gmail API: <https://console.cloud.google.com/apis/library/gmail.googleapis.com> → **Enable**.
-3. Configure the consent screen: <https://console.cloud.google.com/auth/branding>
-   - App name "Doorstep", your email for support/developer contact.
-   - Audience: **External**. Add your Gmail address under **Test users**.
-4. Create the client: <https://console.cloud.google.com/auth/clients> → **Create client** →
-   type **Desktop app** → name it → **Create** → **Download JSON**.
-5. Move the downloaded file to:
-   ```
-   ~/Library/Application Support/Doorstep/client_secret.json
-   ```
-   (The app's **Show folder** button opens this folder.)
-6. Click **Connect Gmail** in the menu bar panel and approve read-only access.
-   Google will warn that the app is unverified — that's expected for a personal app;
-   choose **Continue**.
+1. Open the panel and click **Set up Gmail**. A checklist lists the five Google Cloud steps; each
+   **Open** button goes straight to the right page, with a one-line hint of what to click.
+2. After the last step (**Download JSON**), Doorstep spots the `client_secret_….json` in your
+   Downloads and offers to use it. You can also **Choose…** it or drop it on the panel. The file is
+   checked right away (for example, it tells you if you made a *Web* client instead of *Desktop app*).
+3. Click **Connect Gmail**, choose **Continue** on Google's "unverified app" notice (expected for
+   an app only you use), and approve **read-only** access. If macOS asks about the Keychain, choose
+   **Always Allow**.
 
-**Staying signed in:** while the consent screen is in *Testing*, Google expires the sign-in
-every 7 days. To avoid that, go to <https://console.cloud.google.com/auth/audience> and click
-**Publish app**. Verification is not required for an app only you use; you'll just see the
-"unverified app" notice once when connecting.
+The first sync reads the last 60 days of order emails and takes a few minutes.
+
+**Staying signed in.** While your Google app is in *Testing*, Google signs you out every 7 days.
+After you connect, Doorstep shows a one-time tip with links: fill in **Branding** (app name, support
+and developer emails; leave the logo empty, which would trigger Google's review), then **Publish app**
+on the **Audience** page. If Google does sign you out, the panel says so and offers **Reconnect Gmail**.
+
+<details>
+<summary>The same steps, without the in-app guide</summary>
+
+**1. Create a project.** <https://console.cloud.google.com/projectcreate>
+Name it anything (e.g. "Doorstep") → **Create**. Make sure it's selected in the project picker at
+the top left before continuing.
+
+**2. Turn on the Gmail API.** <https://console.cloud.google.com/apis/library/gmail.googleapis.com>
+Click **Enable**. (If it says **Manage**, it's already on.)
+
+**3. Set up the sign-in screen.** <https://console.cloud.google.com/auth/overview> → **Get started**
+- **App Information:** app name "Doorstep", and your email as the support email.
+- **Audience:** choose **External**. (*Internal* is greyed out unless you use Google Workspace.)
+- **Contact Information:** your email.
+- **Finish:** agree to the policy → **Create**.
+
+**4. Add yourself as a test user.** <https://console.cloud.google.com/auth/audience>
+Under **Test users** → **Add users** → your Gmail address → **Save**.
+
+**5. Create the Desktop client.** <https://console.cloud.google.com/auth/clients> → **Create client**
+- Application type: **Desktop app**. Name: anything.
+- Leave "Use this client for an AI-powered agent" unchecked.
+- **Create**, then **Download JSON** in the dialog that appears.
+
+**6. Give the file to Doorstep.** Move the downloaded `client_secret_….json` to
+`~/Library/Application Support/Doorstep/client_secret.json` (in Finder: **Go → Go to Folder…**),
+or run:
+
+```sh
+mv ~/Downloads/client_secret_*.json ~/Library/Application\ Support/Doorstep/client_secret.json
+```
+
+Then quit and reopen Doorstep.
+
+**7. Connect.** Click **Connect Gmail** in the panel. Your browser opens Google's sign-in:
+- "Google hasn't verified this app" is expected for an app only you use → **Continue**.
+- Approve **read-only** access. The browser then says *Doorstep is connected*.
+- macOS may ask whether Doorstep can use its Keychain item → **Always Allow**.
+
+The first sync reads the last 60 days of order emails and takes a few minutes; the list fills in
+as it goes.
+
+**Staying signed in (recommended).** While the app is in *Testing*, Google signs you out every
+7 days. To stop that:
+1. Open <https://console.cloud.google.com/auth/branding> and make sure app name, user support
+   email and developer contact email are filled in. **Leave the logo empty**, since adding one
+   triggers Google's review.
+2. Open <https://console.cloud.google.com/auth/audience> → **Publish app**. (It stays greyed out
+   until Branding is complete.) No verification is needed for an app only you use.
+
+</details>
+
+**If something goes wrong**
+
+| You see | What it means |
+| --- | --- |
+| The client file is rejected | It's not a *Desktop app* client, or it's incomplete; create or download it again (step 5) |
+| "Access blocked: Doorstep has not completed the Google verification process" | Your Gmail address isn't in **Test users** (step 4) |
+| Error mentioning `redirect_uri` or a *Web* client | The client type must be **Desktop app** (step 5) |
+| "Google signed you out" after about a week | The app is still in *Testing*; click **Reconnect Gmail**, then publish it (above) |
+| Repeated Keychain password prompts | Choose **Always Allow**, not Allow; see *Build and run* for the signing tip |
 
 ## Live carrier tracking (optional)
 

@@ -20,6 +20,49 @@ struct OAuthClient {
         }
         return nil
     }
+
+    /// Checks a file before using it, with a message a person can act on.
+    static func validate(_ url: URL) -> Result<OAuthClient, ClientFileError> {
+        guard let data = try? Data(contentsOf: url),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return .failure(.notAClientFile) }
+        if json["web"] != nil { return .failure(.webClient) }
+        guard let body = json["installed"] as? [String: Any] else { return .failure(.notAClientFile) }
+        guard let id = body["client_id"] as? String, let secret = body["client_secret"] as? String else { return .failure(.incomplete) }
+        return .success(OAuthClient(clientId: id, clientSecret: secret))
+    }
+
+    /// Validates and copies a downloaded client file into place.
+    static func importFile(_ url: URL) throws {
+        if case .failure(let error) = validate(url) { throw error }
+        let destination = AppPaths.clientSecretFile
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.copyItem(at: url, to: destination)
+    }
+
+    /// The newest client_secret*.json in Downloads from the last day.
+    static func newestDownload() -> URL? {
+        let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
+        let files = (try? FileManager.default.contentsOfDirectory(at: downloads, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let dayAgo = Date().addingTimeInterval(-86_400)
+        return files
+            .filter { $0.lastPathComponent.hasPrefix("client_secret") && $0.pathExtension == "json" }
+            .compactMap { url -> (URL, Date)? in
+                guard let date = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, date > dayAgo else { return nil }
+                return (url, date)
+            }
+            .max { $0.1 < $1.1 }?.0
+    }
+}
+
+enum ClientFileError: LocalizedError {
+    case notAClientFile, webClient, incomplete
+    var errorDescription: String? {
+        switch self {
+        case .notAClientFile: "This isn't a Google client file. Download the JSON from your Desktop app client."
+        case .webClient: "This is a Web application client. Create a Desktop app client instead (step 5)."
+        case .incomplete: "This client file is missing its ID or secret. Download it again."
+        }
+    }
 }
 
 @MainActor
@@ -32,11 +75,18 @@ final class GoogleAuth {
     private var accessToken: String?
     private var expiry = Date.distantPast
 
-    var hasClientFile: Bool { OAuthClient.load() != nil }
+    private(set) var hasClientFile = OAuthClient.load() != nil
+    /// Google revoked the sign-in (usually the weekly expiry while the app is in Testing).
+    private(set) var signedOutByGoogle = UserDefaults.standard.bool(forKey: "signedOutByGoogle")
 
     init() {
         // Snapshot mode renders sample data and must never trigger a Keychain prompt.
         isSignedIn = Snapshot.isActive ? false : Keychain.get(Self.refreshKey) != nil
+    }
+
+    func importClientFile(_ url: URL) throws {
+        try OAuthClient.importFile(url)
+        hasClientFile = OAuthClient.load() != nil
     }
 
     func signIn() async throws {
@@ -82,6 +132,8 @@ final class GoogleAuth {
         accessToken = tokens.access_token
         expiry = Date().addingTimeInterval(TimeInterval(tokens.expires_in - 60))
         isSignedIn = true
+        signedOutByGoogle = false
+        UserDefaults.standard.set(false, forKey: "signedOutByGoogle")
         NSApp.activate()
     }
 
@@ -102,6 +154,8 @@ final class GoogleAuth {
         } catch AuthError.tokenExchange(let msg) where msg.contains("invalid_grant") {
             // Refresh token revoked or expired (e.g. app still in Google's "Testing" mode).
             signOut()
+            signedOutByGoogle = true
+            UserDefaults.standard.set(true, forKey: "signedOutByGoogle")
             throw AuthError.notSignedIn
         }
     }

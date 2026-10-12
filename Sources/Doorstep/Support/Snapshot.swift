@@ -77,6 +77,7 @@ enum Snapshot {
             ("detail-multi", AnyView(OrderDetailView(order: store.order(id: "supp")!, back: {}))),
             ("settings", AnyView(SettingsView(back: {}))),
             ("onboarding", AnyView(OnboardingView())),
+            ("setup-guide", AnyView(SetupGuideView(back: {}))),
         ]
 
         for scheme in [ColorScheme.dark, .light] {
