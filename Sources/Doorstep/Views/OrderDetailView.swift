@@ -1,0 +1,270 @@
+import AppKit
+import SwiftUI
+
+struct OrderDetailView: View {
+    @Environment(OrderStore.self) private var store
+    let order: Order
+    let back: () -> Void
+    @State private var copied = false
+
+    private var color: Color { Palette.color(for: order.status) }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Button(action: back) {
+                    HStack(spacing: 2) {
+                        Image(systemName: "chevron.left").font(.system(size: 13, weight: .semibold))
+                        Text("Deliveries")
+                    }
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.blue)
+                    .padding(.leading, 4)
+                    .padding(.trailing, 10)
+                    .frame(minHeight: 30)
+                }
+                .buttonStyle(HoverButtonStyle(cornerRadius: 8))
+                .keyboardShortcut(.cancelAction)
+                Spacer()
+                Menu {
+                    if let number = order.orderNumber {
+                        Button("Copy order number") { copy(number) }
+                    }
+                    Button("Hide order") { store.hide(order); back() }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 30, height: 30)
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(HoverButtonStyle(cornerRadius: 8))
+                .fixedSize()
+                .accessibilityLabel("More actions")
+            }
+            .padding(.leading, 8)
+            .padding(.trailing, 12)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+
+            FittedScroll(maxHeight: 640) {
+                VStack(alignment: .leading, spacing: 18) {
+                    titleBlock
+                    statusCard
+                    updates
+                    if order.items.filter({ !$0.name.isEmpty }).count > 1 { itemsSection }
+                    detailsList
+                    actions
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+                .padding(.bottom, 18)
+            }
+        }
+    }
+
+    private var titleBlock: some View {
+        HStack(spacing: 14) {
+            OrderThumbnail(order: order, size: 52)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(order.title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .kerning(-0.15)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityAddTraits(.isHeader)
+                Text(order.merchant)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var statusCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(order.status.label, systemImage: Palette.symbol(for: order.status))
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(color)
+                Text(etaText)
+                    .font(.system(size: 24, weight: .semibold))
+                    .kerning(-0.5)
+                if order.deliveryInferred == true, let at = order.deliveredAt {
+                    Text("No delivery email. It was due \(DateText.weekdayDay(at)).")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                if order.status == .delayed, let original = order.originalExpected {
+                    Text("Originally due \(DateText.weekdayDay(original))")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            ProgressDots(stage: order.stage, color: color, showLabels: true)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 16)
+        .padding(.bottom, 14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.cardBorder, lineWidth: 0.5))
+    }
+
+    private var etaText: String {
+        let cal = Calendar.current
+        if order.deliveryInferred == true { return "Likely delivered" }
+        if order.status == .delivered, let at = order.deliveredAt {
+            let day = cal.isDateInToday(at) ? "today" : at.formatted(.dateTime.weekday(.abbreviated))
+            return "Delivered \(day), \(at.formatted(date: .omitted, time: .shortened))"
+        }
+        if order.status == .outForDelivery {
+            return order.expectedByTime.map { "Today, \($0)" } ?? "Today"
+        }
+        guard let eta = order.expectedDelivery else { return "Arrival date not known yet" }
+        if cal.isDateInToday(eta) { return order.expectedByTime.map { "Today, \($0)" } ?? "Today" }
+        if cal.isDateInTomorrow(eta) { return "Tomorrow" }
+        let day = DateText.weekdayDay(eta)
+        return order.status == .ordered ? "Est. \(day)" : day
+    }
+
+    private var updates: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "Updates").padding(.horizontal, -8)
+            let events = order.events.sorted { $0.date > $1.date }
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(spacing: 4) {
+                            Circle()
+                                .fill(index == 0 ? color : Palette.track)
+                                .frame(width: 8, height: 8)
+                            Rectangle()
+                                .fill(index == events.count - 1 ? .clear : Palette.track)
+                                .frame(width: 1.5)
+                                .frame(minHeight: 20)
+                        }
+                        .padding(.top, 5)
+                        .frame(width: 10)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(event.status.eventLabel)
+                                .font(.system(size: 13, weight: index == 0 ? .semibold : .regular))
+                            Text(DateText.eventTime(event.date))
+                                .font(.system(size: 11.5))
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.bottom, 14)
+                    }
+                }
+            }
+        }
+    }
+
+    private var itemsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            SectionHeader(title: "Items").padding(.horizontal, -8)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(order.items.filter { !$0.name.isEmpty }.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text("\(item.quantity)×").foregroundStyle(.secondary).monospacedDigit()
+                        Text(item.name)
+                    }
+                    .font(.system(size: 13))
+                }
+            }
+        }
+    }
+
+    private var detailsList: some View {
+        let rows: [(String, String)] = [
+            ("Order", order.orderNumber),
+            ("Carrier", order.carrierName),
+            ("Ordered", order.orderedAt.map(DateText.weekdayDay)),
+            ("Total", order.total),
+        ].compactMap { label, value in value.map { (label, $0) } }
+
+        return VStack(spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                detailRow(row.0, divider: index > 0) {
+                    Text(row.1).monospacedDigit().textSelection(.enabled)
+                }
+            }
+            detailRow("Tracking", divider: !rows.isEmpty, trailing: order.trackingNumber == nil ? 14 : 6) {
+                HStack(spacing: 4) {
+                    Text(order.trackingNumber ?? "Not assigned yet")
+                        .monospacedDigit()
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let tracking = order.trackingNumber {
+                        Button(copied ? "Copied" : "Copy") {
+                            copy(tracking)
+                            copied = true
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Palette.blue)
+                        .padding(.horizontal, 8)
+                        .frame(minHeight: 26)
+                        .buttonStyle(HoverButtonStyle(cornerRadius: 6))
+                    }
+                }
+            }
+        }
+        .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.cardBorder, lineWidth: 0.5))
+    }
+
+    private func detailRow<V: View>(_ label: String, divider: Bool, trailing: CGFloat = 14, @ViewBuilder value: () -> V) -> some View {
+        HStack(spacing: 12) {
+            Text(label).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            value()
+        }
+        .font(.system(size: 12.5))
+        .padding(.leading, 14)
+        .padding(.trailing, trailing)
+        .frame(minHeight: 38)
+        .overlay(alignment: .top) {
+            if divider { Palette.hairline.frame(height: 0.5) }
+        }
+    }
+
+    private var actions: some View {
+        VStack(spacing: 8) {
+            if let url = order.carrier.trackingURL(tracking: order.trackingNumber, orderNumber: order.orderNumber) {
+                Button { NSWorkspace.shared.open(url) } label: {
+                    HStack(spacing: 6) {
+                        Text(trackLabel)
+                        Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold))
+                    }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+            HStack(spacing: 8) {
+                Button("Open email") { openEmail() }
+                    .buttonStyle(SecondaryButtonStyle())
+                    .disabled(order.latestThreadId == "sample")
+                Button("Hide order") { store.hide(order); back() }
+                    .buttonStyle(SecondaryButtonStyle())
+            }
+        }
+    }
+
+    private var trackLabel: String {
+        switch order.carrier {
+        case .amazon: "Track on Amazon"
+        case .other: "Look up tracking"
+        default: "Track with \(order.carrier.displayName)"
+        }
+    }
+
+    private func openEmail() {
+        if let url = URL(string: "https://mail.google.com/mail/u/0/#all/\(order.latestThreadId)") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private func copy(_ value: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+    }
+}

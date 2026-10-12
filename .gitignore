@@ -1,0 +1,8 @@
+.build/
+build/
+.swiftpm/
+*.xcodeproj
+# Google OAuth client file — never commit
+client_secret*.json
+Resources/client_secret.json
+.DS_Store

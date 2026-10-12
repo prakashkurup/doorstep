@@ -1,0 +1,94 @@
+import AppKit
+import SwiftUI
+
+/// `Doorstep --snapshot <dir>` renders every screen with sample data to PNGs and
+/// exits. Used to check layout without opening the menu bar panel.
+enum Snapshot {
+    static let directory: String? = {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--snapshot"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }()
+
+    static var isActive: Bool { directory != nil }
+
+    /// `Doorstep --dump <gmail message id>` prints the text the parser sees for one email.
+    static let dumpMessageID: String? = {
+        let args = CommandLine.arguments
+        guard let i = args.firstIndex(of: "--dump"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }()
+
+    @MainActor
+    static func dump(id: String, auth: GoogleAuth) async {
+        do {
+            let msg = try await GmailClient(token: auth.validAccessToken()).message(id: id)
+            let text = msg.html.map(HTMLText.plain(from:)) ?? msg.plainText ?? ""
+            print("From: \(msg.fromName) <\(msg.fromAddress)>\nSubject: \(msg.subject)\nHas JSON-LD: \(msg.html?.contains("application/ld+json") ?? false)\n---")
+            print(String(text.prefix(3000)))
+            if let html = msg.html {
+                print("--- images:")
+                for c in ProductImage.candidates(in: html) {
+                    print("  \(c.width.map(String.init) ?? "?")x\(c.height.map(String.init) ?? "?") alt=\"\(c.alt.prefix(40))\" \(c.src.prefix(140))")
+                }
+            }
+        } catch {
+            print("dump failed: \(error)")
+        }
+    }
+
+    @MainActor
+    static func run(store: OrderStore) {
+        guard let dir = directory else { return }
+        let url = URL(fileURLWithPath: dir, isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        store.deliveredExpanded = true
+
+        let scenes: [(String, AnyView)] = [
+            ("list", AnyView(OrderListView(open: { _ in }, openSettings: {}))),
+            ("detail-today", AnyView(OrderDetailView(order: store.order(id: "aero")!, back: {}))),
+            ("detail-delayed", AnyView(OrderDetailView(order: store.order(id: "drip")!, back: {}))),
+            ("detail-multi", AnyView(OrderDetailView(order: store.order(id: "supp")!, back: {}))),
+            ("settings", AnyView(SettingsView(back: {}))),
+            ("onboarding", AnyView(OnboardingView())),
+        ]
+
+        for scheme in [ColorScheme.dark, .light] {
+            let appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)!
+            appearance.performAsCurrentDrawingAppearance {
+                for (name, view) in scenes {
+                    let content = view
+                        .environment(store)
+                        .frame(width: 372)
+                        .background(scheme == .dark ? Color(white: 0.17) : Color(white: 0.95))
+                        .environment(\.colorScheme, scheme)
+                    write(content, to: url.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png"))
+                }
+            }
+        }
+
+        let states: [(String, OrderStore.MenuBarState)] = [
+            ("menubar-idle", .init(text: nil, needsAttention: false)),
+            ("menubar-count", .init(text: "7", needsAttention: false)),
+            ("menubar-today", .init(text: "1 today", needsAttention: true)),
+        ]
+        for (name, state) in states {
+            let img = MenuBarLabel.render(state)
+            if let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
+               let png = rep.representation(using: .png, properties: [:]) {
+                try? png.write(to: url.appendingPathComponent("\(name).png"))
+            }
+        }
+        print("Snapshots written to \(url.path)")
+    }
+
+    @MainActor
+    private static func write<V: View>(_ view: V, to url: URL) {
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let png = rep.representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: url)
+    }
+}
