@@ -8,7 +8,8 @@ read on your Mac; nothing goes to a server but Gmail and (optionally) the carrie
   <img src="docs/images/hero.png" alt="Doorstep: the Arriving list, an order with live carrier scans, and monthly spending" width="900">
 </p>
 
-<sub>Screenshots use the app's built-in sample orders.</sub>
+<sub>Screenshots use the app's built-in sample orders, in light mode. Sections, cards and reminders
+appear only when you have something for them, so your panel will usually be shorter.</sub>
 
 ## A quick tour
 
@@ -18,10 +19,11 @@ read on your Mac; nothing goes to a server but Gmail and (optionally) the carrie
 
 ### Arriving
 Packages grouped by **Today**, **Tomorrow**, **Running late** and **Later**, each with a colored
-status and a 4-step progress bar. The package that's out for delivery gets a card with its
-delivery window and a little truck on the last stretch. A **week strip** shows which days have
-deliveries (click a day to filter), and a one-line reminder appears when a return window is about
-to close.
+status (Shipped, Arriving today, Out for delivery, Delayed, Late, Preparing) and a 4-step progress
+bar. A package that's out for delivery gets its own card with the delivery window and a little
+truck on the last stretch. The **week strip** above shows a dot for each day with deliveries; click
+a day to see just that day. When a return window closes within 3 days, a one-line reminder
+appears at the top (dismiss it with ✕; it stays on the Returns tab).
 
 </td>
 <td width="50%" valign="top">
@@ -76,15 +78,21 @@ named, so a low month never looks mysterious.
   <img src="docs/images/menu-bar.png" alt="Menu bar states: idle, packages in transit, arriving today with a delay warning" width="660">
 </p>
 
-The icon stays quiet when nothing's coming, counts packages in transit, switches to
-**"1 today"** (or the carrier's delivery window) on delivery day, and adds a warning mark when
-something is delayed. It hops when a package goes out for delivery and wiggles when it arrives.
+| State | When |
+| --- | --- |
+| Box only | Nothing on the way |
+| Box + **7** | Packages in transit |
+| Box + **1 today** | Packages due today (⚠︎ added when something is delayed) |
+| Box + **10:30–2:30** | One package today with a carrier delivery window (needs live tracking) |
+| Box + **Delivered** | For an hour after a package is delivered |
+
+The box hops when a package goes out for delivery and wiggles when one is delivered.
 
 ### Also
 
 - **Signature required** badge when someone needs to be home.
 - **Product photos** from the email; otherwise a category icon, the store's logo or the carrier's.
-- **Paste to track:** copy any UPS/USPS/FedEx/DHL number, open the panel, press ⌘V.
+- **Paste to track:** copy any UPS/USPS/FedEx/DHL number, open the panel on Arriving or Returns, press ⌘V.
 - **Right-click any order:** copy tracking number, track, open the email, mark as received, hide.
 - **Searchable history** of everything delivered in the last 60 days.
 - **Notifications** only when it matters: out for delivery, delivered, delayed, return window closing.
@@ -96,7 +104,23 @@ something is delayed. It hops when a package goes out for delivery and wiggles w
 | ⌘1 / ⌘2 / ⌘3 | Arriving / Returns / Delivered |
 | ↑ ↓ then ↩ | Move through orders and open one; Esc goes back |
 | ⌘R | Refresh |
-| ⌘V | Track a copied tracking number |
+| ⌘V | Track a copied tracking number (Arriving and Returns tabs) |
+
+### Limitations
+
+Doorstep only knows what your email (and, if connected, the carrier) says:
+
+- **Amazon** emails name only a category ("Supplements"), never the product or a photo, and
+  Amazon doesn't email "Out for delivery". Amazon packages due today show **Arriving today**;
+  their `TBA…` tracking numbers can't be checked with any carrier.
+- **Spending** counts only orders whose emails include a price. Stores you only hear about
+  through a carrier's shipping notice (e.g. "Your UPS package was delivered") aren't counted, and
+  are named under the chart.
+- **Return windows** marked *est.* use the store's usual policy (Amazon 30 days, Walmart and
+  Target 90, …), not your specific item's.
+- Without live tracking, status updates only when the store sends an email; if no "delivered"
+  email comes, an order is shown as **Likely delivered** a few days after its expected date.
+- Gmail only, last 60 days.
 
 ### Privacy
 

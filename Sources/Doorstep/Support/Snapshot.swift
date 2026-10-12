@@ -98,6 +98,8 @@ enum Snapshot {
             ("menubar-idle", .init(text: nil, needsAttention: false)),
             ("menubar-count", .init(text: "7", needsAttention: false)),
             ("menubar-today", .init(text: "1 today", needsAttention: true)),
+            ("menubar-window", .init(text: "10:30–2:30", needsAttention: false)),
+            ("menubar-delivered", .init(text: "Delivered", needsAttention: false)),
         ]
         for (name, state) in states {
             let img = MenuBarLabel.render(state)

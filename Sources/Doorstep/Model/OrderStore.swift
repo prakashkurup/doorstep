@@ -201,10 +201,8 @@ final class OrderStore {
     /// Returns in progress plus windows closing within a week.
     var returnsCount: Int { activeReturns.count + returnsClosing.count }
 
-    /// The week strip earns its space only when packages spread over several days.
-    var showsWeekStrip: Bool {
-        weekDays.filter { !arrivals(on: $0).isEmpty }.count >= 3
-    }
+    /// Always shown while anything is on the way, so it never seems to disappear.
+    var showsWeekStrip: Bool { arrivingCount > 0 }
 
     /// Delivered orders whose return window closes within a week and haven't been returned.
     var returnsClosing: [Order] {
