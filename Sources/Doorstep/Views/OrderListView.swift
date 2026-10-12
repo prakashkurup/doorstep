@@ -6,6 +6,7 @@ struct OrderListView: View {
     let openReturn: (ReturnCase) -> Void
     let openSettings: () -> Void
     let openSpending: () -> Void
+    @State private var toast: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,7 +17,7 @@ struct OrderListView: View {
             FittedScroll(maxHeight: 600) {
                 VStack(alignment: .leading, spacing: 16) {
                     switch store.listTab {
-                    case .arriving: ArrivingTab(open: open, goToReturns: { switchTab(.returns) })
+                    case .arriving: ArrivingTab(open: open, goToReturns: { store.selectTab(.returns) })
                     case .returns: ReturnsTab(open: open, openReturn: openReturn)
                     case .delivered: DeliveredTab(open: open)
                     }
@@ -24,13 +25,63 @@ struct OrderListView: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 2)
                 .padding(.bottom, 14)
+                .id(store.listTab)
+                .transition(.push(from: store.tabMovedForward ? .trailing : .leading))
             }
+            .clipped()
             footer
+        }
+        .overlay(alignment: .bottom) {
+            if let toast {
+                Toast(message: toast).padding(.bottom, 52)
+            }
+        }
+        .background { keyboardCommands }
+        .focusable()
+        .focusEffectDisabled()
+        .onKeyPress(.downArrow) { store.moveHighlight(by: 1); return .handled }
+        .onKeyPress(.upArrow) { store.moveHighlight(by: -1); return .handled }
+        .onKeyPress(.return) {
+            guard let id = store.highlightedID, let order = store.order(id: id) else { return .ignored }
+            open(order)
+            return .handled
         }
     }
 
-    private func switchTab(_ tab: OrderStore.ListTab) {
-        withAnimation(.snappy(duration: 0.2)) { store.listTab = tab }
+    /// Invisible buttons that own the panel's shortcuts: ⌘1–3 for tabs, ⌘V to track a
+    /// pasted number (not on Delivered, where ⌘V belongs to the search field).
+    @ViewBuilder
+    private var keyboardCommands: some View {
+        ZStack {
+            Button("") { store.selectTab(.arriving) }.keyboardShortcut("1")
+            Button("") { store.selectTab(.returns) }.keyboardShortcut("2")
+            Button("") { store.selectTab(.delivered) }.keyboardShortcut("3")
+            if store.listTab != .delivered {
+                Button("") { pasteTrackingNumber() }.keyboardShortcut("v")
+            }
+        }
+        .opacity(0)
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+    }
+
+    private func pasteTrackingNumber() {
+        guard let text = NSPasteboard.general.string(forType: .string) else {
+            show("Copy a tracking number, then press ⌘V here.")
+            return
+        }
+        Task {
+            let message = await store.addTrackingNumber(text)
+            show(message)
+        }
+    }
+
+    private func show(_ message: String) {
+        withAnimation(.snappy(duration: 0.25)) { toast = message }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.6))
+            withAnimation(.easeOut(duration: 0.3)) { if toast == message { toast = nil } }
+        }
     }
 
     private var header: some View {
@@ -39,12 +90,23 @@ struct OrderListView: View {
                 .font(.system(size: 15, weight: .semibold))
                 .kerning(-0.15)
             Spacer()
-            HStack(spacing: 2) {
-                IconButton(symbol: "chart.bar.xaxis", label: "Spending", action: openSpending)
-                IconButton(symbol: "arrow.clockwise", label: "Refresh", spinning: store.isSyncing) {
-                    Task { await store.refresh() }
+            GlassEffectContainer(spacing: 8) {
+                HStack(spacing: 6) {
+                    Button(action: openSpending) {
+                        Image(systemName: "chart.bar.xaxis")
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.glass)
+                    .buttonBorderShape(.circle)
+                    .help("Spending")
+                    .accessibilityLabel("Spending")
+                    SyncButton(isSyncing: store.isSyncing, failed: store.lastError != nil, progress: store.syncProgress) {
+                        Task { await store.refresh() }
+                    }
+                    .disabled(!store.isConnected)
                 }
-                .disabled(!store.isConnected)
             }
         }
         .padding(.leading, 18)
@@ -53,6 +115,7 @@ struct OrderListView: View {
         .padding(.bottom, 8)
     }
 
+    /// A floating glass capsule: sync status on the left, the app menu on the right.
     private var footer: some View {
         HStack {
             TimelineView(.periodic(from: .now, by: 30)) { _ in
@@ -62,6 +125,9 @@ struct OrderListView: View {
                         .frame(width: 6, height: 6)
                     Text(syncText)
                         .lineLimit(1)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.25), value: syncText)
                 }
                 .font(.system(size: 11.5))
                 .foregroundStyle(.secondary)
@@ -87,15 +153,19 @@ struct OrderListView: View {
             .help("Settings and more")
             .accessibilityLabel("Settings and more")
         }
-        .padding(.leading, 18)
-        .padding(.trailing, 10)
-        .padding(.vertical, 8)
-        .overlay(alignment: .top) { Palette.hairline.frame(height: 0.5) }
+        .padding(.leading, 14)
+        .padding(.trailing, 4)
+        .padding(.vertical, 3)
+        .glassEffect(.regular, in: Capsule())
+        .padding(.horizontal, 10)
+        .padding(.bottom, 10)
+        .padding(.top, 4)
     }
 
     private var syncText: String {
         if let error = store.lastError { return error }
         if store.isSampleMode && !store.isConnected { return "Showing sample orders" }
+        if store.isSyncing && store.syncTotal > 0 { return "Reading \(store.syncDone) of \(store.syncTotal) emails…" }
         if store.isSyncing { return "Syncing with Gmail…" }
         guard let last = store.lastSynced else { return "Not synced yet" }
         if Date().timeIntervalSince(last) < 60 { return "Synced with Gmail · just now" }
@@ -107,25 +177,25 @@ struct OrderListView: View {
 
 private struct TabSwitcher: View {
     @Environment(OrderStore.self) private var store
+    @Namespace private var pill
 
     var body: some View {
-        HStack(spacing: 2) {
-            tab(.arriving, "Arriving", symbol: "shippingbox.fill", tint: Palette.blue, count: store.arrivingCount)
-            tab(.returns, "Returns", symbol: "arrow.uturn.left", tint: Palette.orange, count: store.returnsCount)
-            tab(.delivered, "Delivered", symbol: "checkmark.circle.fill", tint: Palette.green, count: nil)
+        GlassEffectContainer(spacing: 4) {
+            HStack(spacing: 2) {
+                tab(.arriving, "Arriving", symbol: "shippingbox.fill", tint: Palette.blue, count: store.arrivingCount)
+                tab(.returns, "Returns", symbol: "arrow.uturn.left", tint: Palette.orange, count: store.returnsCount)
+                tab(.delivered, "Delivered", symbol: "checkmark.circle.fill", tint: Palette.green, count: nil)
+            }
+            .padding(3)
+            .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
-        .padding(2)
-        .background(Color.gray.opacity(0.14), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     /// Icon and color identify each tab at a glance; the selected one is tinted in its color.
     private func tab(_ id: OrderStore.ListTab, _ label: String, symbol: String, tint: Color, count: Int?) -> some View {
         let selected = store.listTab == id
         return Button {
-            withAnimation(.snappy(duration: 0.2)) {
-                store.listTab = id
-                store.selectedDay = nil
-            }
+            store.selectTab(id)
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: symbol)
@@ -138,6 +208,8 @@ private struct TabSwitcher: View {
                     Text("\(count)")
                         .font(.system(size: 10.5, weight: .bold))
                         .monospacedDigit()
+                        .contentTransition(.numericText(value: Double(count)))
+                        .animation(.snappy, value: count)
                         .foregroundStyle(selected ? tint : .secondary)
                         .padding(.horizontal, 5)
                         .frame(minWidth: 17, minHeight: 16)
@@ -146,14 +218,14 @@ private struct TabSwitcher: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 30)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(selected ? tint.opacity(0.16) : .clear)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(selected ? tint.opacity(0.35) : .clear, lineWidth: 0.5)
-            )
+            .background {
+                // One pill that glides to whichever tab is selected.
+                if selected {
+                    Color.clear
+                        .glassEffect(.regular.tint(tint.opacity(0.32)).interactive(), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .matchedGeometryEffect(id: "pill", in: pill)
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -309,7 +381,7 @@ private struct ReturnNudge: View {
             .accessibilityLabel("Dismiss return reminder")
             .padding(.trailing, 6)
         }
-        .background(Palette.orange.opacity(0.13), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .glassEffect(.regular.tint(Palette.orange.opacity(0.22)).interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -417,6 +489,8 @@ private struct DeliveredRow: View {
             .frame(minHeight: 44)
         }
         .buttonStyle(HoverButtonStyle())
+        .keyboardHighlight(order.id)
+        .contextMenu { OrderActions(order: order) }
     }
 
     private var subtitle: String {
@@ -489,13 +563,19 @@ struct TodayCard: View {
                     }
                     Spacer(minLength: 0)
                 }
-                ProgressDots(stage: order.stage, color: color)
+                if order.status == .outForDelivery {
+                    RouteProgress(color: color)
+                } else {
+                    ProgressDots(stage: order.stage, color: color)
+                }
             }
             .padding(.horizontal, 14)
             .padding(.top, 14)
             .padding(.bottom, 12)
         }
         .buttonStyle(CardButtonStyle())
+        .contextMenu { OrderActions(order: order) }
+        .heroMatched("row-\(order.id)")
     }
 }
 
@@ -539,12 +619,17 @@ struct OrderRow: View {
             .frame(minHeight: 50)
         }
         .buttonStyle(HoverButtonStyle())
+        .keyboardHighlight(order.id)
+        .contextMenu { OrderActions(order: order) }
+        .heroMatched("row-\(order.id)")
         .accessibilityElement(children: .combine)
     }
 
     /// Always present, so every row answers "where is it?" at a glance.
     private var status: (text: String, color: Color) {
         if context == .late && order.status != .delayed { return ("Late", Palette.orange) }
+        // Due today but no "out for delivery" news (Amazon never emails that step): say what we know.
+        if context == .today && order.status == .shipped { return ("Arriving today", Palette.blue) }
         return (order.live?.isReadyForPickup == true ? "Ready for pickup" : order.status.label, Palette.color(for: order.status))
     }
 

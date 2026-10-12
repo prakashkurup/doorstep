@@ -52,6 +52,9 @@ struct OrderDetailView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     titleBlock
                     statusCard
+                    if !Snapshot.isActive, order.status != .delivered, let place = order.live?.events.first?.location {
+                        LastScanMap(place: place)
+                    }
                     updates
                     if order.items.filter({ !$0.name.isEmpty }).count > 1 { itemsSection }
                     detailsList
@@ -132,8 +135,7 @@ struct OrderDetailView: View {
         .padding(.top, 16)
         .padding(.bottom, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.cardBorder, lineWidth: 0.5))
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var etaText: String {
@@ -281,23 +283,30 @@ struct OrderDetailView: View {
         }
     }
 
+    // No GlassEffectContainer here: it would blend the blue primary into its neighbors.
     private var actions: some View {
-        VStack(spacing: 8) {
-            if let url = order.carrier.trackingURL(tracking: order.trackingNumber, orderNumber: order.orderNumber) {
-                Button { NSWorkspace.shared.open(url) } label: {
-                    HStack(spacing: 6) {
-                        Text(trackLabel)
-                        Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold))
+        Group {
+            VStack(spacing: 8) {
+                if let url = order.carrier.trackingURL(tracking: order.trackingNumber, orderNumber: order.orderNumber) {
+                    Button { NSWorkspace.shared.open(url) } label: {
+                        HStack(spacing: 6) {
+                            Text(trackLabel)
+                            Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold))
+                        }
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 30)
                     }
+                    .buttonStyle(.glassProminent)
+                    .tint(Palette.primaryButton)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-            }
-            HStack(spacing: 8) {
-                Button("Open email") { openEmail() }
-                    .buttonStyle(SecondaryButtonStyle())
-                    .disabled(order.latestThreadId == "sample")
-                Button("Hide order") { store.hide(order); back() }
-                    .buttonStyle(SecondaryButtonStyle())
+                HStack(spacing: 8) {
+                    Button("Open email") { openEmail() }
+                        .buttonStyle(NeutralGlassButtonStyle())
+                        .disabled(["sample", "manual"].contains(order.latestThreadId))
+                    Button("Hide order") { store.hide(order); back() }
+                        .buttonStyle(NeutralGlassButtonStyle())
+                }
             }
         }
     }

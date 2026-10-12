@@ -41,10 +41,11 @@ struct WeekStrip: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(selected ? Palette.blue.opacity(0.18) : .clear)
-            )
+            .background {
+                if selected {
+                    Color.clear.glassEffect(.regular.tint(Palette.blue.opacity(0.28)), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+            }
             .contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
         .buttonStyle(HoverButtonStyle(cornerRadius: 9))

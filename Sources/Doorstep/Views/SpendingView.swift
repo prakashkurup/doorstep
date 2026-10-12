@@ -30,12 +30,12 @@ struct SpendingView: View {
                 .keyboardShortcut(.cancelAction)
                 Spacer()
                 HStack(spacing: 2) {
-                    IconButton(symbol: "chevron.left", label: "Previous month") { monthIndex += 1 }
+                    GlassChevron(symbol: "chevron.left", label: "Previous month") { withAnimation(.snappy(duration: 0.35)) { monthIndex += 1 } }
                         .disabled(monthIndex + 1 >= months.count)
                     Text(month.formatted(.dateTime.month(.wide).year()))
                         .font(.system(size: 12.5, weight: .semibold))
                         .frame(minWidth: 110)
-                    IconButton(symbol: "chevron.right", label: "Next month") { monthIndex -= 1 }
+                    GlassChevron(symbol: "chevron.right", label: "Next month") { withAnimation(.snappy(duration: 0.35)) { monthIndex -= 1 } }
                         .disabled(monthIndex == 0)
                 }
             }
@@ -51,6 +51,7 @@ struct SpendingView: View {
                     Text(spend.total, format: .currency(code: "USD"))
                         .font(.system(size: 40, weight: .semibold))
                         .kerning(-1)
+                        .contentTransition(.numericText(value: spend.total))
                 }
                 .accessibilityElement(children: .combine)
 
@@ -65,8 +66,7 @@ struct SpendingView: View {
                     StatCell(label: "Refunds", value: spend.refunds > 0 ? spend.refunds.formatted(.currency(code: "USD")) : "None")
                 }
                 .padding(.vertical, 12)
-                .background(Palette.card, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Palette.cardBorder, lineWidth: 0.5))
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                 if spend.stores.isEmpty {
                     Text("No order totals found for this month.")
@@ -168,6 +168,7 @@ private struct StatCell: View {
                     Image(systemName: symbol).font(.system(size: 11, weight: .bold))
                 }
                 Text(value).font(.system(size: 15, weight: .semibold)).monospacedDigit()
+                    .contentTransition(.numericText())
                 if let detail {
                     Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).monospacedDigit()
                 }
@@ -178,5 +179,23 @@ private struct StatCell: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
         .accessibilityElement(children: .combine)
+    }
+}
+
+private struct GlassChevron: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .help(label)
+        .accessibilityLabel(label)
     }
 }

@@ -12,6 +12,7 @@ struct DoorstepApp: App {
             Snapshot.run(store: store)
             exit(0)
         }
+        if !Snapshot.isActive { GlobalHotKey.register() }
         if let query = Snapshot.searchQuery {
             Task { @MainActor in
                 await Snapshot.search(query, auth: store.auth)
@@ -31,7 +32,7 @@ struct DoorstepApp: App {
             PopoverView()
                 .environment(store)
         } label: {
-            MenuBarLabel(state: store.menuBarState)
+            MenuBarLabel(state: store.menuBarState, pulse: store.menuBarPulse)
         }
         .menuBarExtraStyle(.window)
     }
@@ -40,6 +41,7 @@ struct DoorstepApp: App {
 struct PopoverView: View {
     @Environment(OrderStore.self) private var store
     @State private var route: Route = .list
+    @Namespace private var hero
 
     enum Route: Equatable {
         case list, detail(String), returnDetail(String), settings, spending
@@ -80,6 +82,7 @@ struct PopoverView: View {
                 }
             }
         }
+        .environment(\.heroNamespace, hero)
         .frame(width: 372)
         .clipped()
     }
@@ -93,17 +96,41 @@ struct PopoverView: View {
 /// and follow the menu bar's light/dark tint.
 struct MenuBarLabel: View {
     let state: OrderStore.MenuBarState
+    var pulse: OrderStore.MenuBarPulse?
+    /// Current animation frame for the box: vertical offset and tilt.
+    @State private var pose = (dy: CGFloat(0), angle: Double(0))
 
     var body: some View {
-        Image(nsImage: Self.render(state))
+        Image(nsImage: Self.render(state, dy: pose.dy, angle: pose.angle))
             .accessibilityLabel(state.text.map { "Doorstep, \($0)" } ?? "Doorstep")
+            .onChange(of: pulse) { _, pulse in
+                guard let pulse else { return }
+                animate(pulse.kind)
+            }
+    }
+
+    /// The menu bar shows a rendered image, so animate by stepping through a few frames:
+    /// a hop when something heads out for delivery, a happy wiggle when it's delivered.
+    private func animate(_ kind: OrderStore.MenuBarPulse.Kind) {
+        let frames: [(CGFloat, Double)] = kind == .outForDelivery
+            ? [(-2, 0), (-3.5, 0), (-2, 0), (0, 0), (-1.5, 0), (0, 0)]
+            : [(0, -14), (0, 12), (0, -9), (0, 6), (0, -3), (0, 0)]
+        Task { @MainActor in
+            for frame in frames {
+                pose = (frame.0, frame.1)
+                try? await Task.sleep(for: .milliseconds(70))
+            }
+            pose = (0, 0)
+        }
     }
 
     @MainActor
-    static func render(_ state: OrderStore.MenuBarState) -> NSImage {
+    static func render(_ state: OrderStore.MenuBarState, dy: CGFloat = 0, angle: Double = 0) -> NSImage {
         let view = HStack(spacing: 4) {
             Image(systemName: "shippingbox")
                 .font(.system(size: 13.5, weight: .medium))
+                .rotationEffect(.degrees(angle))
+                .offset(y: dy)
             if let text = state.text {
                 Text(text).font(.system(size: 13, weight: .medium))
             }

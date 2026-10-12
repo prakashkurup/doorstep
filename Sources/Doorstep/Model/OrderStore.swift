@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 import Observation
 import ServiceManagement
+import SwiftUI
 
 @MainActor
 @Observable
@@ -9,6 +10,10 @@ final class OrderStore {
     private(set) var orders: [Order] = []
     private(set) var returns: [ReturnCase] = []
     private(set) var isSyncing = false
+    /// Emails read so far in the current sync, out of `syncTotal` (0 when nothing new).
+    private(set) var syncDone = 0
+    private(set) var syncTotal = 0
+    var syncProgress: Double? { syncTotal > 0 ? Double(syncDone) / Double(syncTotal) : nil }
     private(set) var lastSynced: Date?
     private(set) var lastError: String?
     private(set) var accountEmail: String?
@@ -18,6 +23,48 @@ final class OrderStore {
 
     enum ListTab: String, CaseIterable { case arriving, returns, delivered }
     var listTab: ListTab = .arriving
+    /// Row highlighted with the arrow keys.
+    var highlightedID: String?
+    /// Which way the tab content slides.
+    var tabMovedForward = true
+
+    func selectTab(_ tab: ListTab) {
+        let order = ListTab.allCases
+        tabMovedForward = (order.firstIndex(of: tab) ?? 0) >= (order.firstIndex(of: listTab) ?? 0)
+        highlightedID = nil
+        selectedDay = nil
+        withAnimation(.snappy(duration: 0.3)) { listTab = tab }
+    }
+
+    /// Orders in the order they appear on the current tab, for ↑/↓ navigation.
+    var navigableOrders: [Order] {
+        switch listTab {
+        case .arriving: selectedDay.map { arrivals(on: $0) } ?? (today + tomorrow + late + later)
+        case .returns: openReturnWindows
+        case .delivered: deliveredHistory
+        }
+    }
+
+    func moveHighlight(by step: Int) {
+        let list = navigableOrders
+        guard !list.isEmpty else { return }
+        let current = list.firstIndex { $0.id == highlightedID }
+        let next = current.map { min(max($0 + step, 0), list.count - 1) } ?? (step > 0 ? 0 : list.count - 1)
+        withAnimation(.snappy(duration: 0.15)) { highlightedID = list[next].id }
+    }
+
+    /// Fires the menu bar icon's bounce (out for delivery) or wiggle (delivered).
+    struct MenuBarPulse: Equatable {
+        enum Kind { case outForDelivery, delivered }
+        let kind: Kind
+        let token = UUID()
+    }
+    private(set) var menuBarPulse: MenuBarPulse?
+
+    /// Tracking numbers pasted into the panel, with no email behind them.
+    private(set) var manualOrders: [Order] = []
+    /// Orders the user marked as received themselves.
+    private var receivedOverrides: [String: Date] = [:]
     /// Bumped when product photos finish downloading so thumbnails redraw.
     private(set) var imagesVersion = 0
 
@@ -374,7 +421,7 @@ final class OrderStore {
         connectedCarriers.remove(kind)
         // Drop cached results that came from this carrier so email takes over again.
         liveCache = liveCache.filter { $0.value.carrierName != kind.name }
-        orders = applyLive(builtOrders)
+        publish()
         saveState()
     }
 
@@ -384,7 +431,7 @@ final class OrderStore {
         liveCache = [:]
         registeredNumbers = []
         liveQuota = nil
-        orders = applyLive(builtOrders)
+        publish()
         saveState()
     }
 
@@ -393,7 +440,9 @@ final class OrderStore {
     func refresh() async {
         guard isConnected, !isSyncing else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        syncDone = 0
+        syncTotal = 0
+        defer { isSyncing = false; syncTotal = 0; syncDone = 0 }
         do {
             let token = try await auth.validAccessToken()
             let client = GmailClient(token: token)
@@ -401,6 +450,7 @@ final class OrderStore {
 
             let ids = try await client.listMessageIDs()
             let newIDs = ids.filter { findingsCache[$0] == nil && !nonOrderIDs.contains($0) }
+            syncTotal = newIDs.count
 
             // Fetch in small parallel batches; the on-device model runs one email at a time.
             for batch in newIDs.chunked(6) {
@@ -414,11 +464,12 @@ final class OrderStore {
                     } else {
                         nonOrderIDs.insert(msg.id)
                     }
+                    withAnimation(.easeOut(duration: 0.3)) { syncDone += 1 }
                 }
                 // Show progress during a long first sync instead of an empty list.
                 if orders.isEmpty || newIDs.count > 12 {
                     builtOrders = OrderBuilder.build(from: Array(findingsCache.values))
-                    orders = applyLive(builtOrders)
+                    publish()
                 }
             }
 
@@ -470,8 +521,8 @@ final class OrderStore {
     }
 
     private func refreshLive(force: Bool) async {
-        defer { orders = applyLive(builtOrders); announceChanges(in: orders) }
-        let candidates = trackableNumbers(in: builtOrders)
+        defer { publish(); announceChanges(in: orders) }
+        let candidates = trackableNumbers(in: baseOrders)
         guard !candidates.isEmpty else { return }
         let now = Date()
         var errors: [String] = []
@@ -560,15 +611,83 @@ final class OrderStore {
         }
     }
 
+    // MARK: Publishing
+
+    /// Email orders (or the sample set), before live data and the user's own changes.
+    private var baseOrders: [Order] {
+        let emailOrders = (isSampleMode && !isConnected) || Snapshot.isActive ? SampleData.orders() : builtOrders
+        let known = Set(emailOrders.compactMap { $0.trackingNumber.map(Self.normalizedNumber) })
+        return emailOrders + manualOrders.filter { !known.contains(Self.normalizedNumber($0.trackingNumber ?? "")) }
+    }
+
+    /// The one place the visible list is set, animated so rows glide between sections.
+    private func publish() {
+        let next = applyOverrides(applyLive(baseOrders))
+        withAnimation(.snappy(duration: 0.35)) { orders = next }
+    }
+
+    private func applyOverrides(_ list: [Order]) -> [Order] {
+        list.map { original in
+            guard let at = receivedOverrides[original.id], original.status != .delivered else { return original }
+            var o = original
+            o.status = .delivered
+            o.stage = 3
+            o.deliveredAt = at
+            o.deliveryInferred = nil
+            o.expectedDelivery = nil
+            if o.returnBy == nil, o.isGrocery != true, let days = ReturnPolicy.defaultDays(for: o.merchant) {
+                o.returnBy = Calendar.current.date(byAdding: .day, value: days, to: Calendar.current.startOfDay(for: at))
+                o.returnByEstimated = true
+            }
+            return o
+        }
+    }
+
+    func markReceived(_ order: Order) {
+        receivedOverrides[order.id] = Date()
+        publish()
+        saveState()
+    }
+
+    /// Adds a pasted tracking number. Returns a short message for the panel.
+    @discardableResult
+    func addTrackingNumber(_ raw: String) async -> String {
+        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let number = Heuristics.tracking(in: text) ?? Self.normalizedNumber(text)
+        let carrier = Carrier.detect(tracking: number, name: nil, merchant: "")
+        guard number.count >= 10, number.count <= 34, number.contains(where: \.isNumber), carrier != .other || Heuristics.tracking(in: text) != nil else {
+            return "That doesn't look like a tracking number."
+        }
+        if orders.contains(where: { $0.trackingNumber.map(Self.normalizedNumber) == Self.normalizedNumber(number) }) {
+            return "Already tracking \(number)."
+        }
+        let name = carrier == .other ? "Carrier" : carrier.displayName
+        let order = Order(
+            id: "m:" + Self.normalizedNumber(number), merchant: name, items: [], fallbackTitle: "Package via \(name)",
+            carrierName: carrier == .other ? nil : name, trackingNumber: number, orderNumber: nil,
+            status: .shipped, stage: 1, expectedDelivery: nil, expectedByTime: nil, originalExpected: nil,
+            orderedAt: nil, deliveredAt: nil, total: nil, events: [],
+            latestMessageId: "manual", latestThreadId: "manual", lastUpdated: Date()
+        )
+        manualOrders.append(order)
+        listTab = .arriving
+        publish()
+        saveState()
+        await refreshLive(force: true)
+        return isLiveTrackingOn ? "Tracking \(number)." : "Added \(number). Connect \(name) in Settings for live status."
+    }
+
     private func announceChanges(in newOrders: [Order]) {
         let firstSync = knownStatuses.isEmpty
         for order in newOrders {
             let previous = knownStatuses[order.id]
             knownStatuses[order.id] = order.status
-            guard !firstSync, notificationsEnabled, previous != order.status, !hiddenIDs.contains(order.id) else { continue }
+            guard !firstSync, previous != order.status, !hiddenIDs.contains(order.id) else { continue }
             // Only fresh news: skip updates older than a day (e.g. a backfill).
             guard Date().timeIntervalSince(order.lastUpdated) < 86_400 else { continue }
-            Notifier.shared.announce(order)
+            if order.status == .outForDelivery { menuBarPulse = MenuBarPulse(kind: .outForDelivery) }
+            if order.status == .delivered { menuBarPulse = MenuBarPulse(kind: .delivered) }
+            if notificationsEnabled { Notifier.shared.announce(order) }
         }
     }
 
@@ -622,6 +741,8 @@ final class OrderStore {
         var accountEmail: String?
         var liveCache: [String: LiveTracking]?
         var registeredNumbers: Set<String>?
+        var manualOrders: [Order]?
+        var receivedOverrides: [String: Date]?
     }
 
     private func loadState() {
@@ -637,7 +758,9 @@ final class OrderStore {
         accountEmail = state.accountEmail
         if isConnected {
             builtOrders = state.orders
-            orders = applyLive(state.orders)
+            manualOrders = state.manualOrders ?? []
+            receivedOverrides = state.receivedOverrides ?? [:]
+            orders = applyOverrides(applyLive(builtOrders + manualOrders))
             returns = state.returns ?? []
             lastSynced = state.lastSynced
         }
@@ -649,7 +772,8 @@ final class OrderStore {
         let state = SavedState(parserVersion: Self.parserVersion, orders: sample ? [] : builtOrders, returns: sample ? [] : returns,
                                findings: findingsCache, nonOrderIDs: nonOrderIDs, hiddenIDs: hiddenIDs,
                                knownStatuses: knownStatuses, lastSynced: lastSynced, accountEmail: accountEmail,
-                               liveCache: liveCache, registeredNumbers: registeredNumbers)
+                               liveCache: liveCache, registeredNumbers: registeredNumbers,
+                               manualOrders: manualOrders, receivedOverrides: receivedOverrides)
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: AppPaths.stateFile, options: .atomic)
     }

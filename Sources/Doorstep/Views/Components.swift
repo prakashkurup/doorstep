@@ -22,6 +22,11 @@ struct OrderThumbnail: View {
     var size: CGFloat = 36
 
     var body: some View {
+        content.heroMatched("thumb-\(order.id)")
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let _ = store.imagesVersion
         if let remote = order.imageURL, let image = NSImage(contentsOf: ImageStore.localFile(for: remote)) {
             Image(nsImage: image)
@@ -194,8 +199,13 @@ struct CardButtonStyle: ButtonStyle {
 
         var body: some View {
             configuration.label
-                .background(Palette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Palette.cardBorder, lineWidth: 0.5))
+                // Glass sits in its own layer behind the content, so the content always draws.
+                .background {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Palette.card)
+                        Color.clear.glassEffect(.regular, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
                 .brightness(hovering ? 0.03 : 0)
                 .scaleEffect(configuration.isPressed ? 0.99 : 1)
                 .offset(y: hovering ? -1 : 0)
@@ -224,6 +234,135 @@ struct IconButton: View {
         .buttonStyle(HoverButtonStyle(cornerRadius: 8))
         .help(label)
         .accessibilityLabel(label)
+    }
+}
+
+/// Refresh, done properly: arrows at rest; while syncing, a thin ring that fills with
+/// real progress (or a steady arc when there's nothing to count); on success the ring
+/// closes in green and a checkmark draws itself, then the arrows return. Failure turns
+/// the ring orange. A minimum duration keeps quick syncs from flickering.
+struct SyncButton: View {
+    let isSyncing: Bool
+    let failed: Bool
+    let progress: Double?
+    let action: () -> Void
+
+    private enum Phase: Equatable { case idle, syncing, done, failed }
+    @State private var phase: Phase = .idle
+    @State private var startedAt = Date.distantPast
+    @State private var closeRing: CGFloat = 0
+    @State private var drawCheck: CGFloat = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            guard phase == .idle || phase == .done || phase == .failed else { return }
+            begin()
+            action()
+        } label: {
+            ZStack {
+                switch phase {
+                case .idle:
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .transition(.scale(scale: 0.6).combined(with: .opacity))
+                case .syncing:
+                    ring.transition(.scale(scale: 0.6).combined(with: .opacity))
+                case .done:
+                    finished(color: Palette.green, symbol: nil)
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                case .failed:
+                    finished(color: Palette.orange, symbol: "exclamationmark")
+                        .transition(.scale(scale: 0.8).combined(with: .opacity))
+                }
+            }
+            .frame(width: 16, height: 16)
+            .frame(width: 30, height: 30)
+            .contentShape(Circle())
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .keyboardShortcut("r")
+        .help(phase == .syncing ? "Syncing…" : "Refresh (⌘R)")
+        .accessibilityLabel(phase == .syncing ? "Syncing" : "Refresh")
+        .accessibilityValue(progress.map { "\(Int($0 * 100)) percent" } ?? "")
+        .onChange(of: isSyncing) { _, syncing in
+            if syncing { begin() } else { end() }
+        }
+    }
+
+    /// Track + arc. Determinate when we know how many emails are left.
+    @ViewBuilder
+    private var ring: some View {
+        ZStack {
+            Circle().stroke(Color.secondary.opacity(0.22), lineWidth: 2)
+            if let progress {
+                Circle()
+                    .trim(from: 0, to: max(0.04, progress))
+                    .stroke(Palette.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(.easeOut(duration: 0.35), value: progress)
+            } else {
+                TimelineView(.animation(paused: reduceMotion)) { timeline in
+                    let t = timeline.date.timeIntervalSinceReferenceDate
+                    Circle()
+                        .trim(from: 0, to: 0.28)
+                        .stroke(Palette.blue, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                        .rotationEffect(.degrees(reduceMotion ? 0 : (t * 400).truncatingRemainder(dividingBy: 360)))
+                }
+            }
+        }
+    }
+
+    private func finished(color: Color, symbol: String?) -> some View {
+        ZStack {
+            Circle()
+                .trim(from: 0, to: closeRing)
+                .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if let symbol {
+                Image(systemName: symbol).font(.system(size: 9, weight: .heavy)).foregroundStyle(color)
+            } else {
+                CheckmarkShape()
+                    .trim(from: 0, to: drawCheck)
+                    .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+                    .padding(4.5)
+            }
+        }
+    }
+
+    private func begin() {
+        guard phase != .syncing else { return }
+        startedAt = Date()
+        closeRing = 0
+        drawCheck = 0
+        withAnimation(.snappy(duration: 0.25)) { phase = .syncing }
+    }
+
+    private func end() {
+        let wait = max(0, 0.6 - Date().timeIntervalSince(startedAt))
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(wait))
+            closeRing = progress ?? 0.28
+            withAnimation(.snappy(duration: 0.2)) { phase = failed ? .failed : .done }
+            withAnimation(.easeInOut(duration: 0.3)) { closeRing = 1 }
+            try? await Task.sleep(for: .seconds(0.22))
+            withAnimation(.easeOut(duration: 0.28)) { drawCheck = 1 }
+            try? await Task.sleep(for: .seconds(failed ? 2.0 : 1.1))
+            withAnimation(.snappy(duration: 0.3)) { if phase != .syncing { phase = .idle } }
+        }
+    }
+}
+
+/// A checkmark path that can be drawn on with `trim`.
+struct CheckmarkShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.minX, y: rect.midY + rect.height * 0.05))
+        p.addLine(to: CGPoint(x: rect.minX + rect.width * 0.38, y: rect.maxY - rect.height * 0.12))
+        p.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + rect.height * 0.12))
+        return p
     }
 }
 
@@ -283,5 +422,75 @@ struct FittedScroll<Content: View>: View {
         }
         .scrollIndicators(.never)
         .frame(height: min(max(contentHeight, 1), maxHeight))
+    }
+}
+
+/// Right-click actions shared by every order row and card.
+struct OrderActions: View {
+    @Environment(OrderStore.self) private var store
+    let order: Order
+
+    var body: some View {
+        if let tracking = order.trackingNumber {
+            Button("Copy Tracking Number") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(tracking, forType: .string)
+            }
+        }
+        if let url = order.carrier.trackingURL(tracking: order.trackingNumber, orderNumber: order.orderNumber) {
+            Button("Track Package") { NSWorkspace.shared.open(url) }
+        }
+        if !["sample", "manual"].contains(order.latestThreadId) {
+            Button("Open Email") {
+                if let url = URL(string: "https://mail.google.com/mail/u/0/#all/\(order.latestThreadId)") { NSWorkspace.shared.open(url) }
+            }
+        }
+        Divider()
+        if order.isActive {
+            Button("Mark as Received") { store.markReceived(order) }
+        }
+        Button("Hide") { withAnimation(.snappy) { store.hide(order) } }
+    }
+}
+
+/// Highlight for the row selected with the arrow keys.
+struct KeyboardHighlight: ViewModifier {
+    @Environment(OrderStore.self) private var store
+    let id: String
+
+    func body(content: Content) -> some View {
+        content.background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Palette.blue.opacity(store.highlightedID == id ? 0.18 : 0))
+        )
+    }
+}
+
+extension View {
+    func keyboardHighlight(_ id: String) -> some View { modifier(KeyboardHighlight(id: id)) }
+}
+
+/// Secondary actions on glass, always in neutral ink (never picks up an accent tint).
+struct NeutralGlassButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        NeutralGlassBody(configuration: configuration)
+    }
+
+    private struct NeutralGlassBody: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 12.5, weight: .medium))
+                .foregroundStyle(.primary)
+                .opacity(isEnabled ? 1 : 0.4)
+                .frame(maxWidth: .infinity)
+                .frame(height: 34)
+                .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .scaleEffect(configuration.isPressed ? 0.98 : 1)
+                .animation(.snappy(duration: 0.15), value: configuration.isPressed)
+        }
     }
 }

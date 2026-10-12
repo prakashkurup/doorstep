@@ -73,7 +73,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Text("Checks Gmail every 15 minutes and when your Mac wakes. Emails are read on this Mac only.")
+                Text("Checks Gmail every 15 minutes and when your Mac wakes. Emails are read on this Mac only.\nShortcuts: ⌥⌘D open Doorstep · ⌘1–3 tabs · ↑↓ ↩ navigate · ⌘R refresh · ⌘V track a copied number")
                     .font(.system(size: 11.5))
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

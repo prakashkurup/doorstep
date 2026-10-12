@@ -30,6 +30,8 @@ struct ReturnWindowRow: View {
             .frame(minHeight: 50)
         }
         .buttonStyle(HoverButtonStyle())
+        .keyboardHighlight(order.id)
+        .contextMenu { OrderActions(order: order) }
         .help(order.returnBy.map { "Return by \($0.formatted(.dateTime.weekday(.wide).month().day()))" } ?? "")
     }
 }
@@ -40,6 +42,11 @@ struct ReturnThumbnail: View {
     var size: CGFloat = 36
 
     var body: some View {
+        content.heroMatched("thumb-\(item.id)")
+    }
+
+    @ViewBuilder
+    private var content: some View {
         let _ = store.imagesVersion
         if let remote = item.imageURL, let image = NSImage(contentsOf: ImageStore.localFile(for: remote)) {
             Image(nsImage: image)
