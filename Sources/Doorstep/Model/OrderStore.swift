@@ -68,8 +68,18 @@ final class OrderStore {
 
     /// Tracking numbers pasted into the panel, with no email behind them.
     private(set) var manualOrders: [Order] = []
-    /// Orders the user marked as received themselves.
+    /// Orders the user marked as delivered themselves.
     private var receivedOverrides: [String: Date] = [:]
+
+    /// A brief message at the bottom of the panel, optionally with Undo.
+    struct Notice: Equatable {
+        let id = UUID()
+        let message: String
+        var undo: Undo?
+
+        enum Undo: Equatable { case markedDelivered(orderID: String) }
+    }
+    private(set) var notice: Notice?
     /// Bumped when product photos finish downloading so thumbnails redraw.
     private(set) var imagesVersion = 0
 
@@ -638,6 +648,7 @@ final class OrderStore {
             o.stage = 3
             o.deliveredAt = at
             o.deliveryInferred = nil
+            o.markedDelivered = true
             o.expectedDelivery = nil
             if o.returnBy == nil, o.isGrocery != true, let days = ReturnPolicy.defaultDays(for: o.merchant) {
                 o.returnBy = Calendar.current.date(byAdding: .day, value: days, to: Calendar.current.startOfDay(for: at))
@@ -647,10 +658,34 @@ final class OrderStore {
         }
     }
 
-    func markReceived(_ order: Order) {
+    func markDelivered(_ order: Order) {
         receivedOverrides[order.id] = Date()
         publish()
         saveState()
+        show("Marked as delivered", undo: .markedDelivered(orderID: order.id))
+    }
+
+    func unmarkDelivered(id: String) {
+        guard receivedOverrides.removeValue(forKey: id) != nil else { return }
+        publish()
+        saveState()
+    }
+
+    func show(_ message: String, undo: Notice.Undo? = nil) {
+        let next = Notice(message: message, undo: undo)
+        withAnimation(.snappy(duration: 0.25)) { notice = next }
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(undo == nil ? 2.6 : 5))
+            withAnimation(.easeOut(duration: 0.3)) { if notice?.id == next.id { notice = nil } }
+        }
+    }
+
+    func performUndo() {
+        guard let undo = notice?.undo else { return }
+        withAnimation(.easeOut(duration: 0.2)) { notice = nil }
+        switch undo {
+        case .markedDelivered(let id): unmarkDelivered(id: id)
+        }
     }
 
     /// Adds a pasted tracking number. Returns a short message for the panel.
@@ -755,6 +790,11 @@ final class OrderStore {
         hiddenIDs = state.hiddenIDs
         liveCache = state.liveCache ?? [:]
         registeredNumbers = state.registeredNumbers ?? []
+        // Your own marks don't depend on how emails were read, so they survive a re-read.
+        if isConnected {
+            manualOrders = state.manualOrders ?? []
+            receivedOverrides = state.receivedOverrides ?? [:]
+        }
         guard state.parserVersion == Self.parserVersion else { return }
         findingsCache = state.findings
         nonOrderIDs = state.nonOrderIDs
@@ -762,8 +802,6 @@ final class OrderStore {
         accountEmail = state.accountEmail
         if isConnected {
             builtOrders = state.orders
-            manualOrders = state.manualOrders ?? []
-            receivedOverrides = state.receivedOverrides ?? [:]
             orders = applyOverrides(applyLive(builtOrders + manualOrders))
             returns = state.returns ?? []
             lastSynced = state.lastSynced

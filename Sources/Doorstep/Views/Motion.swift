@@ -91,17 +91,28 @@ struct RouteProgress: View {
 
 // MARK: - Toast
 
-/// A brief confirmation at the bottom of the panel (e.g. after pasting a tracking number).
+/// A brief confirmation at the bottom of the panel (e.g. after pasting a tracking number),
+/// with an Undo button when the action can be taken back.
 struct Toast: View {
     let message: String
+    var undo: (() -> Void)?
 
     var body: some View {
-        Text(message)
-            .font(.system(size: 12, weight: .medium))
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .glassEffect(.regular, in: Capsule())
+        HStack(spacing: 10) {
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .multilineTextAlignment(.center)
+            if let undo {
+                Button("Undo", action: undo)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Palette.blue)
+                    .buttonStyle(.plain)
+                    .keyboardShortcut("z")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(.regular, in: Capsule())
             .padding(.horizontal, 24)
             .transition(.move(edge: .bottom).combined(with: .opacity))
     }

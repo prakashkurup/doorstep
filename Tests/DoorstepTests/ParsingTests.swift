@@ -235,6 +235,37 @@ private func date(_ y: Int, _ m: Int, _ d: Int, _ h: Int = 10) -> Date {
         #expect(OrderBuilder.build(now: now, from: [finding("1", .ordered, date(2026, 9, 27))]).isEmpty)
     }
 
+    @Test func confirmationWithLaterDeliveryDateIsKept() {
+        // A preorder or a gift booked weeks ahead: the date, not the email's age, decides.
+        var f = finding("1", .ordered, date(2026, 9, 27))
+        f.expectedDate = date(2026, 10, 20, 0)
+        #expect(OrderBuilder.build(now: now, from: [f]).first?.status == .ordered)
+    }
+
+    @Test func localDeliveryIsLikelyDeliveredTheDayAfter() {
+        // Florist: a confirmation with a delivery date, no tracking, nothing after.
+        var f = finding("1", .ordered, date(2026, 10, 9))
+        f.expectedDate = date(2026, 10, 10, 0)
+        let order = OrderBuilder.build(now: now, from: [f]).first
+        #expect(order?.status == .delivered)
+        #expect(order?.deliveryInferred == true)
+        #expect(order?.stage == 3)
+    }
+
+    @Test func confirmationWithTrackingGetsGraceDays() {
+        var f = finding("1", .ordered, date(2026, 10, 8), tracking: "1Z999AA10123456784")
+        f.expectedDate = date(2026, 10, 10, 0)
+        #expect(OrderBuilder.build(now: now, from: [f]).first?.status == .ordered)
+    }
+
+    @Test func localDeliveryDueTodayReadsArrivingToday() {
+        let today = Date()
+        var f = finding("1", .ordered, today.addingTimeInterval(-3600))
+        f.expectedDate = Calendar.current.startOfDay(for: today)
+        let order = OrderBuilder.build(now: today, from: [f]).first
+        #expect(order?.statusLabel == "Arriving today")
+    }
+
     @Test func amazonMismatchedOrderNumbersMerge() {
         let orders = OrderBuilder.build(now: now, from: [
             finding("1", .shipped, date(2026, 9, 25), order: "112-1111111-2222222", items: ["Swimwear"]),

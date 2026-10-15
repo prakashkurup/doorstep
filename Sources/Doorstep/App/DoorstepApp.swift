@@ -82,6 +82,14 @@ struct PopoverView: View {
                 }
             }
         }
+        .overlay(alignment: .bottom) {
+            if let notice = store.notice {
+                Toast(message: notice.message, undo: notice.undo == nil ? nil : { store.performUndo() })
+                    // Clear of the list's floating footer; elsewhere just off the edge.
+                    .padding(.bottom, route == .list ? 52 : 14)
+                    .id(notice.id)
+            }
+        }
         .environment(\.heroNamespace, hero)
         .frame(width: 372)
         .clipped()

@@ -87,7 +87,9 @@ the "Just delivered" state stays for an hour.
 - A **Signature required** badge tells you when someone needs to be home.
 - Product photos appear when they're in the email. Otherwise, Doorstep uses a category icon or a logo.
 - Copy a UPS, USPS, FedEx, or DHL tracking number and press ⌘V on the Arriving or Returns tab to look it up.
-- Right-click an order to copy its tracking number, open its email, mark it received, or hide it.
+- **Mark as delivered** for stores that never say it arrived (florists, local shops). It's the main
+  button on orders without tracking, and an Undo appears right after.
+- Right-click an order to copy its tracking number, open its email, mark it delivered, or hide it.
 - Search deliveries from the last 60 days.
 - Get notifications when an order goes out for delivery, arrives, or is delayed, and when a return deadline is near.
 - Light and dark mode, Liquid Glass controls, and Reduce Motion support.
@@ -112,8 +114,9 @@ Doorstep only knows what your email (and, if connected, the carrier) says:
   are named under the chart.
 - **Return windows** marked *est.* use the store's usual policy (Amazon 30 days, Walmart and
   Target 90, …), not your specific item's.
-- Without live tracking, status updates only when the store sends an email; if no "delivered"
-  email comes, an order is shown as **Likely delivered** a few days after its expected date.
+- Without live tracking, status updates only when the store sends an email. If no "delivered"
+  email comes, an order is shown as **Likely delivered** a couple of days after its expected date,
+  or the day after for local deliveries with no tracking. You can also mark it yourself.
 - Gmail only, last 60 days.
 
 ### Privacy

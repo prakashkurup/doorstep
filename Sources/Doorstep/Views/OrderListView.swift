@@ -6,7 +6,6 @@ struct OrderListView: View {
     let openReturn: (ReturnCase) -> Void
     let openSettings: () -> Void
     let openSpending: () -> Void
-    @State private var toast: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,11 +29,6 @@ struct OrderListView: View {
             }
             .clipped()
             footer
-        }
-        .overlay(alignment: .bottom) {
-            if let toast {
-                Toast(message: toast).padding(.bottom, 52)
-            }
         }
         .background { keyboardCommands }
         .focusable()
@@ -67,20 +61,12 @@ struct OrderListView: View {
 
     private func pasteTrackingNumber() {
         guard let text = NSPasteboard.general.string(forType: .string) else {
-            show("Copy a tracking number, then press ⌘V here.")
+            store.show("Copy a tracking number, then press ⌘V here.")
             return
         }
         Task {
             let message = await store.addTrackingNumber(text)
-            show(message)
-        }
-    }
-
-    private func show(_ message: String) {
-        withAnimation(.snappy(duration: 0.25)) { toast = message }
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.6))
-            withAnimation(.easeOut(duration: 0.3)) { if toast == message { toast = nil } }
+            store.show(message)
         }
     }
 
@@ -574,13 +560,13 @@ struct TodayCard: View {
     let action: () -> Void
 
     var body: some View {
-        let color = Palette.color(for: order.status)
+        let color = Palette.color(for: order)
         Button(action: action) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     HStack(spacing: 8) {
                         PulsingDot(color: color)
-                        Text(order.live?.isReadyForPickup == true ? "Ready for pickup" : order.status.label)
+                        Text(order.statusLabel)
                     }
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(color)
@@ -670,9 +656,7 @@ struct OrderRow: View {
     /// Always present, so every row answers "where is it?" at a glance.
     private var status: (text: String, color: Color) {
         if context == .late && order.status != .delayed { return ("Late", Palette.orange) }
-        // Due today but no "out for delivery" news (Amazon never emails that step): say what we know.
-        if context == .today && order.status == .shipped { return ("Arriving today", Palette.blue) }
-        return (order.live?.isReadyForPickup == true ? "Ready for pickup" : order.status.label, Palette.color(for: order.status))
+        return (order.statusLabel, Palette.color(for: order))
     }
 
     /// Merchant, then the one timing fact for this section.

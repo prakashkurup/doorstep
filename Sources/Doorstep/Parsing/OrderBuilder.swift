@@ -85,12 +85,21 @@ enum OrderBuilder {
         var inferred = false
 
         // Only a confirmation and nothing since: tickets, pickups, or an order that never shipped.
-        if status == .ordered, now.timeIntervalSince(latest.date) > 7 * day { return nil }
+        // With a delivery date it's a real order from a store that sends nothing more
+        // (florists, local shops), so it ages like a shipped one below instead.
+        if status == .ordered, expectations.isEmpty, now.timeIntervalSince(latest.date) > 7 * day { return nil }
 
         switch status {
         case .outForDelivery where latest.date < startOfToday:
             inferred = true
             deliveredAt = latest.date
+        case .ordered:
+            // No tracking means a local delivery on the stated day; give a parcel two days' grace.
+            let grace = sorted.contains { $0.trackingNumber != nil } ? 2 * day : 0
+            if let eta = expectations.last, eta < startOfToday.addingTimeInterval(-grace) {
+                inferred = true
+                deliveredAt = eta
+            }
         case .shipped, .delayed:
             if let eta = expectations.last, eta < startOfToday.addingTimeInterval(-2 * day) {
                 inferred = true

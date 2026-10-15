@@ -447,7 +447,9 @@ struct OrderActions: View {
         }
         Divider()
         if order.isActive {
-            Button("Mark as Received") { store.markReceived(order) }
+            Button("Mark as Delivered") { store.markDelivered(order) }
+        } else if order.markedDelivered == true {
+            Button("Mark as Not Delivered") { store.unmarkDelivered(id: order.id) }
         }
         Button("Hide") { withAnimation(.snappy) { store.hide(order) } }
     }

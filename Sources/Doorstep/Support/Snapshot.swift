@@ -65,6 +65,16 @@ enum Snapshot {
         store.deliveredExpanded = true
 
         let list = AnyView(OrderListView(open: { _ in }, openReturn: { _ in }, openSettings: {}, openSpending: {}))
+        // A florist order: a confirmation with a delivery date and nothing after.
+        let placed = Calendar.current.date(byAdding: .hour, value: -15, to: Date())!
+        var local = Order(id: "local", merchant: "Corner Florist", items: [OrderItem(name: "Spring Tulip Bouquet")],
+                          fallbackTitle: "", orderNumber: "25100417", status: .ordered, stage: 0,
+                          expectedDelivery: Calendar.current.startOfDay(for: Date()), orderedAt: placed, total: "$64.50",
+                          events: [OrderEvent(messageId: "sample-local", status: .ordered, date: placed)],
+                          latestMessageId: "sample", latestThreadId: "sample", lastUpdated: placed)
+        let localView = AnyView(OrderDetailView(order: local, back: {}))
+        local.status = .delivered; local.stage = 3; local.markedDelivered = true
+        local.deliveredAt = Date(); local.expectedDelivery = nil
         let scenes: [(String, AnyView)] = [
             ("list", list),
             ("list-returns", list),
@@ -75,6 +85,8 @@ enum Snapshot {
             ("detail-today", AnyView(OrderDetailView(order: store.order(id: "aero")!, back: {}))),
             ("detail-delayed", AnyView(OrderDetailView(order: store.order(id: "drip")!, back: {}))),
             ("detail-multi", AnyView(OrderDetailView(order: store.order(id: "supp")!, back: {}))),
+            ("detail-local", localView),
+            ("detail-local-marked", AnyView(OrderDetailView(order: local, back: {}))),
             ("settings", AnyView(SettingsView(back: {}))),
             ("onboarding", AnyView(OnboardingView())),
             ("setup-guide", AnyView(SetupGuideView(back: {}))),

@@ -64,6 +64,8 @@ struct Order: Codable, Identifiable, Hashable {
     var deliveredAt: Date?
     /// True when there was no delivery email and time says it has surely arrived.
     var deliveryInferred: Bool?
+    /// True when you marked it delivered yourself (stores that never email about delivery).
+    var markedDelivered: Bool?
     var total: String?
     var imageURL: String?
     var itemsAreCategories: Bool?
@@ -95,6 +97,21 @@ struct Order: Codable, Identifiable, Hashable {
     var carrierDomain: String? { carrier.domain }
 
     var isActive: Bool { status != .delivered }
+
+    /// Due today with no carrier step saying so: Amazon never emails "out for delivery",
+    /// and local shops (florists, bakeries) send nothing after the confirmation.
+    var isArrivingToday: Bool {
+        guard status == .shipped || (status == .ordered && trackingNumber == nil),
+              let eta = expectedDelivery else { return false }
+        return Calendar.current.isDateInToday(eta)
+    }
+
+    /// The status word on rows, cards and the detail screen.
+    var statusLabel: String {
+        if live?.isReadyForPickup == true { return "Ready for pickup" }
+        if isArrivingToday { return "Arriving today" }
+        return status.label
+    }
 
     /// Words appear on list rows only when something needs a look.
     var showsStatusInRow: Bool { status == .delayed || status == .ordered }

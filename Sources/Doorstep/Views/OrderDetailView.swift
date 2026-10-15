@@ -7,7 +7,8 @@ struct OrderDetailView: View {
     let back: () -> Void
     @State private var copied = false
 
-    private var color: Color { Palette.color(for: order.status) }
+    private var color: Color { Palette.color(for: order) }
+    private var trackURL: URL? { order.carrier.trackingURL(tracking: order.trackingNumber, orderNumber: order.orderNumber) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +30,12 @@ struct OrderDetailView: View {
                 Menu {
                     if let number = order.orderNumber {
                         Button("Copy order number") { copy(number) }
+                    }
+                    // Without a Track button, marking delivered is the main action below instead.
+                    if order.isActive, trackURL != nil {
+                        Button("Mark as delivered") { store.markDelivered(order) }
+                    } else if order.markedDelivered == true {
+                        Button("Mark as not delivered") { store.unmarkDelivered(id: order.id) }
                     }
                     Button("Hide order") { store.hide(order); back() }
                 } label: {
@@ -87,8 +94,7 @@ struct OrderDetailView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Label(order.live?.isReadyForPickup == true ? "Ready for pickup" : order.status.label,
-                          systemImage: Palette.symbol(for: order.status))
+                    Label(order.statusLabel, systemImage: Palette.symbol(for: order))
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(color)
                     Spacer()
@@ -107,6 +113,11 @@ struct OrderDetailView: View {
                     .kerning(-0.5)
                 if order.deliveryInferred == true, let at = order.deliveredAt {
                     Text("No delivery email. It was due \(DateText.weekdayDay(at)).")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                if order.markedDelivered == true {
+                    Text("You marked this as delivered.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -141,6 +152,10 @@ struct OrderDetailView: View {
     private var etaText: String {
         let cal = Calendar.current
         if order.deliveryInferred == true { return "Likely delivered" }
+        // The time you marked it isn't when it arrived, so only the day.
+        if order.markedDelivered == true, let at = order.deliveredAt {
+            return cal.isDateInToday(at) ? "Delivered today" : "Delivered \(at.formatted(.dateTime.weekday(.abbreviated)))"
+        }
         if order.status == .delivered, let at = order.deliveredAt {
             let day = cal.isDateInToday(at) ? "today" : at.formatted(.dateTime.weekday(.abbreviated))
             return "Delivered \(day), \(at.formatted(date: .omitted, time: .shortened))"
@@ -287,7 +302,7 @@ struct OrderDetailView: View {
     private var actions: some View {
         Group {
             VStack(spacing: 8) {
-                if let url = order.carrier.trackingURL(tracking: order.trackingNumber, orderNumber: order.orderNumber) {
+                if let url = trackURL {
                     Button { NSWorkspace.shared.open(url) } label: {
                         HStack(spacing: 6) {
                             Text(trackLabel)
@@ -296,6 +311,16 @@ struct OrderDetailView: View {
                         .font(.system(size: 13, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .frame(height: 30)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .tint(Palette.primaryButton)
+                } else if order.isActive {
+                    // Stores without tracking (florists, local shops) never say it arrived.
+                    Button { store.markDelivered(order) } label: {
+                        Label("Mark as delivered", systemImage: "checkmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 30)
                     }
                     .buttonStyle(.glassProminent)
                     .tint(Palette.primaryButton)

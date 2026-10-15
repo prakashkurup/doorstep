@@ -24,6 +24,15 @@ enum Palette {
         }
     }
 
+    /// Like `color(for:)`, but an order due today reads as on its way, not as waiting.
+    static func color(for order: Order) -> Color {
+        order.isArrivingToday ? blue : color(for: order.status)
+    }
+
+    static func symbol(for order: Order) -> String {
+        order.isArrivingToday ? "shippingbox" : symbol(for: order.status)
+    }
+
     static func symbol(for status: OrderStatus) -> String {
         switch status {
         case .ordered: "clock"
