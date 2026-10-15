@@ -1,0 +1,50 @@
+name: Bug report
+description: Something looks wrong, such as an order read incorrectly or a screen that misbehaves.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please don't paste your emails, order numbers, tracking numbers, or addresses.** This
+        issue is public. Describe the email instead (for example, "a Walmart 'Arriving today' email").
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you saw, and what you expected instead. A screenshot helps; blur anything personal.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce
+      placeholder: |
+        1. Order from …
+        2. Open the panel after the "shipped" email arrives
+        3. …
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Reading orders from email
+        - Live carrier tracking
+        - Returns
+        - Spending
+        - Gmail setup or sign-in
+        - Layout or animation
+        - Something else
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: macOS 26.4
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Doorstep commit
+      description: Output of `git rev-parse --short HEAD` in your checkout.

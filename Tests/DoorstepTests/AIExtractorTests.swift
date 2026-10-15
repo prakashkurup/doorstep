@@ -23,12 +23,15 @@ struct AIExtractorTests {
         #expect(r.status == .shipped)
         #expect(r.items.first.map { $0.count <= 60 } == true)
     }
+}
 
-    @Test func ignoresMarketing() async throws {
-        let r = await AIExtractor.extract(subject: "Our biggest sale of the year starts now",
-                                          sender: "Allbirds <hello@allbirds.com>",
-                                          text: "Take 25% off everything. Free shipping on all orders this weekend. Shop now.",
-                                          emailDate: Date())
-        #expect(r?.isOrder != true)
+/// The model's own yes/no on "is this an order?" varies between runs, so the app never
+/// relies on it alone: an email also needs an order or tracking number. Runs everywhere.
+@Suite struct MarketingFilterTests {
+    @Test func saleEmailIsNotAnOrder() async {
+        let msg = GmailMessage(id: "m1", threadId: "t1", date: Date(), fromName: "Allbirds", fromAddress: "hello@allbirds.com",
+                               subject: "Our biggest sale of the year starts now", html: nil,
+                               plainText: "Take 25% off everything. Free shipping on all orders this weekend. Shop now.")
+        #expect(await OrderExtractor.extract(msg) == nil)
     }
 }

@@ -1,0 +1,15 @@
+name: Feature idea
+description: Something Doorstep could do better or a store it should understand.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like Doorstep to do?
+      description: Start with the problem, such as "I can't tell when my florist delivery arrived."
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Ideas for how it could work

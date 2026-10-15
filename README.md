@@ -1,5 +1,10 @@
 # Doorstep
 
+[![CI](https://github.com/prakashkurup/doorstep/actions/workflows/ci.yml/badge.svg)](https://github.com/prakashkurup/doorstep/actions/workflows/ci.yml)
+![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white)
+![Swift 6.2](https://img.shields.io/badge/Swift-6.2-F05138?logo=swift&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Doorstep is a Mac menu bar app for keeping up with orders and deliveries. It reads the order emails
 in your Gmail and shows what's on the way, which returns are coming due, and what you've spent.
 The email is processed on your Mac. If you turn on live tracking, Doorstep also checks the carriers
@@ -127,14 +132,20 @@ Doorstep only knows what your email (and, if connected, the carrier) says:
 - **Live tracking is optional,** and sends only tracking numbers, to the carriers you connect.
 - Credentials live in the macOS Keychain; cached orders live in `~/Library/Application Support/Doorstep`.
 
-## Build and run
+## Install
 
-Requires macOS 26+ and the Xcode Command Line Tools (full Xcode not needed).
+**Requirements:** macOS 26 or later, the Xcode Command Line Tools (`xcode-select --install`; full
+Xcode isn't needed), and a Gmail account. Apple Intelligence is optional; it helps read product names.
+
+There's no prebuilt download yet, so build it from source:
 
 ```sh
-scripts/build-app.sh            # builds build/Doorstep.app
-scripts/build-app.sh --install  # also copies to ~/Applications and launches it
+git clone https://github.com/prakashkurup/doorstep.git
+cd doorstep
+scripts/build-app.sh --install  # builds Doorstep.app, copies it to ~/Applications, and launches it
 ```
+
+Leave off `--install` to only build `build/Doorstep.app`.
 
 Without Gmail connected, choose **Preview with sample orders** to try the UI.
 
@@ -223,7 +234,7 @@ as it goes.
 | "Access blocked: Doorstep has not completed the Google verification process" | Your Gmail address isn't in **Test users** (step 4) |
 | Error mentioning `redirect_uri` or a *Web* client | The client type must be **Desktop app** (step 5) |
 | "Google signed you out" after about a week | The app is still in *Testing*; click **Reconnect Gmail**, then publish it (above) |
-| Repeated Keychain password prompts | Choose **Always Allow**, not Allow; see *Build and run* for the signing tip |
+| Repeated Keychain password prompts | Choose **Always Allow**, not Allow; see *Install* for the signing tip |
 
 ## Live carrier tracking (optional)
 
@@ -272,6 +283,8 @@ Gmail (last 60 days) is checked every 15 minutes and on wake. Each email is pars
 
 ## Tests
 
+With full Xcode installed, `swift test` is enough. With only the Command Line Tools:
+
 ```sh
 SDKROOT=$(ls -d /Library/Developer/CommandLineTools/SDKs/MacOSX26.*.sdk | tail -1) \
   swift test -Xswiftc -plugin-path -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
@@ -290,3 +303,12 @@ Renders every screen (light and dark) with sample data to PNGs; the README image
 Debugging the parser:
 - `Doorstep --search "<gmail query>"` lists matching emails (id, sender, subject).
 - `Doorstep --dump <gmail message id>` prints the text and images the parser sees for one email.
+
+## Contributing
+
+Bug reports and ideas are welcome; please use the issue templates, and don't paste real emails or
+tracking numbers. Security problems go through [private reporting](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Prakash Kurup
